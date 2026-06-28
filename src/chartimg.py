@@ -70,17 +70,26 @@ def render_chart(
 
     x_left, x_right = df.index[0], df.index[-1]
 
-    # 저항선 = 위쪽 목표가 후보 (빨강 점선)
-    for r in (levels.get("resistances") or [])[:2]:
-        ax.axhline(r["price"], color="#e74c3c", lw=1.0, ls="--", alpha=0.85)
-        ax.text(x_left, r["price"], f"저항 {fp(r['price'])} (+{r['dist_pct']:.1f}%)",
-                color="#c0392b", va="bottom", fontsize=8.5)
+    def _short(lbl: str, n: int = 24) -> str:
+        return lbl if len(lbl) <= n else lbl[: n - 1] + "…"
 
-    # 지지선 = 아래쪽 (파랑 점선)
-    for s in (levels.get("supports") or [])[:2]:
-        ax.axhline(s["price"], color="#2980b9", lw=1.0, ls="--", alpha=0.85)
-        ax.text(x_left, s["price"], f"지지 {fp(s['price'])} ({s['dist_pct']:.1f}%)",
-                color="#1f6391", va="top", fontsize=8.5)
+    _lblbox = dict(boxstyle="round,pad=0.15", fc="white", ec="none", alpha=0.6)
+
+    # 너무 가까운(라벨 겹침) 레벨은 선만 긋고 글자는 생략
+    def _draw_levels(items, color, txtcolor, prefix, va):
+        labeled = []
+        for it in items:
+            ax.axhline(it["price"], color=color, lw=1.0, ls="--", alpha=0.85)
+            if any(abs(it["price"] - y) / cur < 0.02 for y in labeled):
+                continue  # 이미 라벨 단 선과 2% 이내 → 글자 생략(겹침 방지)
+            sign = "+" if it["dist_pct"] >= 0 else ""
+            ax.text(x_left, it["price"],
+                    f" {prefix} {fp(it['price'])} ({sign}{it['dist_pct']:.1f}%) · {_short(it['label'])}",
+                    color=txtcolor, va=va, fontsize=8, bbox=_lblbox)
+            labeled.append(it["price"])
+
+    _draw_levels((levels.get("resistances") or [])[:3], "#e74c3c", "#c0392b", "저항", "bottom")
+    _draw_levels((levels.get("supports") or [])[:3], "#2980b9", "#1f6391", "지지", "top")
 
     # 전문가 평균 목표가 (보라 점선)
     if analyst_target:
