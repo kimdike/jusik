@@ -1,0 +1,11 @@
+# 금융 대시보드 톤 (stock_dashboard_design.md 기반)
+[theme]
+base = "light"
+primaryColor = "#2563EB"             # Accent Blue (강조색 1개)
+backgroundColor = "#F6F8FB"          # bg-main (연회색 페이지)
+secondaryBackgroundColor = "#FFFFFF" # bg-card / 사이드바
+textColor = "#111827"                # text-primary
+font = "sans serif"
+
+[client]
+toolbarMode = "minimal"

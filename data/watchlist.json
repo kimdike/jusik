@@ -1,0 +1,8 @@
+[
+  {"name": "삼성전자", "symbol": "005930", "market": "KR"},
+  {"name": "SK하이닉스", "symbol": "000660", "market": "KR"},
+  {"name": "엔비디아", "symbol": "NVDA", "market": "US"},
+  {"name": "테슬라", "symbol": "TSLA", "market": "US"},
+  {"name": "비트코인", "symbol": "BTC", "market": "COIN"},
+  {"name": "이더리움", "symbol": "ETH", "market": "COIN"}
+]
