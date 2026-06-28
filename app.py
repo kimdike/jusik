@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import html as html_lib
 import json
+import os
 from pathlib import Path
 
 import pandas as pd
@@ -147,6 +148,18 @@ def load_json(path: Path, default):
 def save_json(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def bridge_secrets_to_env() -> None:
+    """Streamlit secrets의 텔레그램 토큰을 환경변수로 노출 → notify가 클라우드에서도 인식.
+    (notify.resolve_token()이 os.environ을 1순위로 읽음)"""
+    try:
+        for k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"):
+            v = st.secrets.get(k)
+            if v and not os.environ.get(k):
+                os.environ[k] = str(v)
+    except Exception:
+        pass
 
 
 def gh_config() -> tuple[str | None, str]:
@@ -1502,6 +1515,7 @@ def _clear_guide():
 
 
 def main():
+    bridge_secrets_to_env()
     st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
     st.sidebar.title("📈 자산 대시보드")
 
