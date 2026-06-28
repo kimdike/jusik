@@ -13,7 +13,10 @@
 
 그러면 제가 이 파일을 읽고 현재까지 만든 것/구조/다음 할 일을 파악한 뒤 이어갑니다.
 
-- **대시보드 켜기**: "대시보드 켜줘" → `http://localhost:8501`
+- **🌐 배포된 앱(폰에서 접속)**: https://mmrc9rnonvagiez8hqkwku.streamlit.app/ (Streamlit 로그인 후 열람)
+- **📦 깃허브 저장소**: https://github.com/kimdike/jusik (Public · `main` 브랜치, `app.py` 진입점)
+  - 코드 수정 후 `git push` 하면 Streamlit Cloud가 자동 재배포함
+- **대시보드 켜기(로컬)**: "대시보드 켜줘" → `http://localhost:8501`
 - **직접 켜기**: PowerShell에서 `cd C:\Users\KDH\Desktop\jusik` → `.venv\Scripts\streamlit run app.py`
 - 바로 다음에 할 만한 것 → 아래 **6. 다음 할 일** 참고
 
@@ -95,7 +98,7 @@ jusik/
 ## 6. 다음 할 일 (로드맵 / 미구현)
 
 우선순위 높음:
-- [ ] **클라우드 배포 (B2)** — Streamlit Community Cloud에 올려 폰에서 24시간 접속 + 알림 자동화 (DEPLOY.md 참고). 깃허브 로그인 필요(브라우저 인증).
+- [x] **클라우드 배포** ✅ 2026-06-28 — Streamlit Cloud 배포 완료 (https://mmrc9rnonvagiez8hqkwku.streamlit.app/). 깃허브 Public 저장소 kimdike/jusik. 보유종목(portfolio.json)은 로컬 전용(gitignore)이라 클라우드는 빈 상태로 시작. 알림 자동화는 토큰 미설정 상태(원하면 Streamlit Secrets로).
 - [x] **백테스트** — "이 신호대로 매매했으면 수익률?" 과거 검증 (신호 신뢰도) ✅ 2026-06-28
 
 그 외 아이디어:
@@ -107,6 +110,7 @@ jusik/
 
 ## 7. 알아둘 점 / 주의
 
+- **배포 운영**: 코드 수정 후 `git push` → Streamlit Cloud 자동 재배포(2~3분). 단 `data/portfolio.json`은 gitignore라 푸시 안 됨(로컬 전용). 앱 뷰어 인증 ON 상태(로그인해야 열람) — 변경은 Streamlit Manage app → Settings → Sharing.
 - **실행 전제**: 자동 알림(알림 설정)은 PC가 켜져 있거나 클라우드 배포 시에만 작동. 현재는 로컬.
 - **데이터 환경 특이사항**: 이 환경의 시세는 실제와 다를 수 있음(예: 삼성전자 35만원대, 코스피 9000선). 로직은 정상.
 - **Windows 콘솔 한글**: 테스트 스크립트는 `PYTHONIOENCODING=utf-8` 필요(cp949 깨짐). 브라우저는 무관.
