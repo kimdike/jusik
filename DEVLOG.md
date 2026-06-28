@@ -43,8 +43,10 @@
 
 ```
 jusik/
-├─ app.py                 # 대시보드 UI 전체 (6개 화면 + CSS + 카드 컴포넌트) ~1100줄
+├─ app.py                 # 대시보드 UI 전체 (7개 화면 + CSS + 카드 컴포넌트)
 ├─ alerts_run.py          # 알림 러너 (1회/--loop/--test)
+├─ requirements-alerts.txt # 알림 전용 경량 의존성 (Actions용; streamlit/plotly 제외)
+├─ .github/workflows/alerts.yml # ⭐ 자동 알림: 30분 크론 → 텔레그램 (PC 꺼도 동작)
 ├─ .streamlit/config.toml # 테마 팔레트(#F6F8FB 배경, #2563EB 강조)
 ├─ src/
 │  ├─ prices.py     # 시세·환율·펀더멘털(get_fundamentals)·전문가의견·get_quote(거래대금/시총)
@@ -99,6 +101,7 @@ jusik/
 
 우선순위 높음:
 - [x] **클라우드 배포** ✅ 2026-06-28 — Streamlit Cloud 배포 완료 (https://mmrc9rnonvagiez8hqkwku.streamlit.app/). 깃허브 Public 저장소 kimdike/jusik. 보유종목(portfolio.json)은 로컬 전용(gitignore)이라 클라우드는 빈 상태로 시작. 알림 자동화는 토큰 미설정 상태(원하면 Streamlit Secrets로).
+- [x] **자동 알림(클라우드)** ✅ 2026-06-28 — GitHub Actions 30분 크론으로 PC 꺼도 텔레그램 발송. 신호변화는 워치리스트 전체 자동, 목표가/손절가는 data/alerts.json 설정 필요(로컬 대시보드 알림설정 → 저장 → git push, 또는 직접 편집). Secrets: TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID. 상태는 actions/cache. 크론은 UTC 기준이며 60일 무활동 시 비활성화될 수 있음(아무 커밋이나 하면 재개).
 - [x] **백테스트** — "이 신호대로 매매했으면 수익률?" 과거 검증 (신호 신뢰도) ✅ 2026-06-28
 
 그 외 아이디어:
