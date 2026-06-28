@@ -1,0 +1,5 @@
+# 자동 알림(GitHub Actions)용 경량 의존성 — streamlit/plotly 불필요
+yfinance>=0.2.50
+pandas>=2.2
+numpy>=2.0
+requests>=2.32
