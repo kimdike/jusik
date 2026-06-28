@@ -181,6 +181,30 @@ def save_json_cloud(rel_path: str, data, message: str) -> tuple[bool, str]:
     return gitstore.save_file(repo, rel_path, content, message, token)
 
 
+def alert_tick(price: float | None, market: str) -> float:
+    """목표가/손절가 ▲▼ 스텝 단위 (가격 규모·시장에 맞게)."""
+    p = price or 0
+    if market.upper() == "US":
+        return round(max(0.01, p * 0.005), 2) or 0.5
+    if p >= 1_000_000:
+        return 10000.0
+    if p >= 100_000:
+        return 1000.0
+    if p >= 10_000:
+        return 100.0
+    if p >= 1_000:
+        return 10.0
+    return 1.0
+
+
+def set_price_pct(state_key: str, base: float | None, pct: float, market: str) -> None:
+    """버튼 콜백: 현재가(base) 대비 pct% 값을 위젯 상태에 채움. (위젯 생성 전 실행돼 안전)"""
+    if base is None:
+        return
+    val = base * (1 + pct / 100.0)
+    st.session_state[state_key] = round(val, 2) if market.upper() == "US" else float(round(val))
+
+
 # ---------------------------------------------------------------------------
 # 데이터 (캐시)
 # ---------------------------------------------------------------------------
@@ -1039,9 +1063,16 @@ def page_alerts():
 
     st.divider()
 
-    # 2) 종목별 알림 설정 (워치리스트 + 보유종목)
+    # 2) 종목별 알림 설정 (워치리스트 + 보유종목) — 현재가 표시 + 버튼/스텝 입력
     st.subheader("종목별 목표가 · 손절가 · 신호알림")
-    st.caption("목표가/손절가는 해당 시장 통화 기준(미국=USD, 그 외=원). 비워두면 그 알림은 끔.")
+    _gh_token, _ = gh_config()
+    if _gh_token:
+        st.caption("☁️ 클라우드 저장 연결됨 — 저장하면 자동 알림(GitHub Actions)에도 바로 반영돼요.")
+    else:
+        st.caption("💾 현재 로컬 저장만 가능 — 폰/클라우드 영구 저장은 Streamlit Secrets에 GH_TOKEN 설정 필요.")
+    st.caption("현재가를 참고해 목표가/손절가를 정하세요. 입력칸 ▲▼로 미세조정, 버튼으로 현재가 대비 % 자동입력. "
+               "값 0이면 그 알림은 끔. (통화: 미국=USD, 그 외=원)")
+
     monitored = {}
     for item in load_json(WATCHLIST_FILE, []) + load_json(PORTFOLIO_FILE, []):
         sym = str(item.get("symbol", "")).strip()
@@ -1049,58 +1080,72 @@ def page_alerts():
         if sym and mkt:
             monitored[f"{sym}|{mkt}"] = item.get("name", sym)
 
-    existing = load_json(ALERTS_FILE, {})
-    rows = []
-    for key, name in monitored.items():
-        sym, mkt = key.split("|", 1)
-        cfg = existing.get(key, {})
-        rows.append({
-            "이름": name, "심볼": sym, "시장": mkt,
-            "목표가": cfg.get("target"), "손절가": cfg.get("stop"),
-            "신호알림": cfg.get("signal_alert", True),
-        })
-    df_edit = pd.DataFrame(rows) if rows else pd.DataFrame(
-        columns=["이름", "심볼", "시장", "목표가", "손절가", "신호알림"])
-
-    edited = st.data_editor(
-        df_edit, use_container_width=True, hide_index=True,
-        disabled=["이름", "심볼", "시장"],
-        column_config={
-            "목표가": st.column_config.NumberColumn("목표가", help="이 가격 이상 도달 시 알림"),
-            "손절가": st.column_config.NumberColumn("손절가", help="이 가격 이하 이탈 시 알림"),
-            "신호알림": st.column_config.CheckboxColumn("신호변화 알림"),
-        },
-        key="alerts_editor",
-    )
-    # 클라우드 영구저장 연결 상태 안내
-    _gh_token, _ = gh_config()
-    if _gh_token:
-        st.caption("☁️ 클라우드 저장 연결됨 — 저장하면 자동 알림(GitHub Actions)에도 바로 반영돼요.")
-    else:
-        st.caption("💾 현재 로컬 저장만 가능 — 폰/클라우드에서 영구 저장하려면 Streamlit Secrets에 GH_TOKEN 설정 필요.")
-
-    if st.button("💾 알림 설정 저장", type="primary"):
-        cfg = {}
-        for _, r in edited.iterrows():
-            key = f"{str(r['심볼']).strip()}|{str(r['시장']).strip().upper()}"
-            entry = {"signal_alert": bool(r["신호알림"])}
-            if pd.notna(r["목표가"]):
-                entry["target"] = float(r["목표가"])
-            if pd.notna(r["손절가"]):
-                entry["stop"] = float(r["손절가"])
-            cfg[key] = entry
-        save_json(ALERTS_FILE, cfg)  # 로컬(또는 현재 컨테이너) 저장
-        ok, info = save_json_cloud("data/alerts.json", cfg, "알림 설정 업데이트 (대시보드)")
-        if ok:
-            st.success("저장 완료! ☁️ 클라우드에 반영됨 — 다음 점검(최대 30분)부터 자동 알림 적용. "
-                       "(앱이 잠시 새로고침될 수 있어요)")
-        elif info == "no-token":
-            st.success("저장 완료! (로컬) — 클라우드 자동 알림 반영은 GH_TOKEN 설정 후 가능해요.")
-        else:
-            st.warning(f"로컬 저장됨. 단, 클라우드 반영 실패: {info}")
-
-    if monitored == {}:
+    if not monitored:
         st.info("워치리스트나 보유종목을 먼저 추가하면 여기 나타납니다.")
+    else:
+        existing = load_json(ALERTS_FILE, {})
+        with st.spinner("현재가 불러오는 중..."):
+            cur_map = {k: fetch_price(k.split("|", 1)[0], k.split("|", 1)[1]) for k in monitored}
+
+        for key, name in monitored.items():
+            sym, mkt = key.split("|", 1)
+            cur = cur_map.get(key)
+            cfg = existing.get(key, {})
+            st.session_state.setdefault(f"tgt_{key}", float(cfg.get("target") or 0.0))
+            st.session_state.setdefault(f"stop_{key}", float(cfg.get("stop") or 0.0))
+            st.session_state.setdefault(f"sig_{key}", bool(cfg.get("signal_alert", True)))
+            tick = alert_tick(cur, mkt)
+            fmt = "%.2f" if mkt == "US" else "%.0f"
+
+            st.markdown(
+                f'<div style="margin-top:6px"><b style="font-size:15px">{html_lib.escape(name)}</b>'
+                f'&nbsp; <span style="color:#6B7280">현재가</span> '
+                f'<b>{fmt_native(cur, mkt)}</b></div>', unsafe_allow_html=True)
+            tc, sc, kc = st.columns([3, 3, 2])
+            with tc:
+                st.number_input("🎯 목표가 (이상이면 알림)", key=f"tgt_{key}",
+                                min_value=0.0, step=float(tick), format=fmt)
+                bb = st.columns(3)
+                bb[0].button("현재가", key=f"tc0_{key}", disabled=cur is None, use_container_width=True,
+                             on_click=set_price_pct, args=(f"tgt_{key}", cur, 0, mkt))
+                bb[1].button("+5%", key=f"tp5_{key}", disabled=cur is None, use_container_width=True,
+                             on_click=set_price_pct, args=(f"tgt_{key}", cur, 5, mkt))
+                bb[2].button("+10%", key=f"tp10_{key}", disabled=cur is None, use_container_width=True,
+                             on_click=set_price_pct, args=(f"tgt_{key}", cur, 10, mkt))
+            with sc:
+                st.number_input("🛑 손절가 (이하면 알림)", key=f"stop_{key}",
+                                min_value=0.0, step=float(tick), format=fmt)
+                bb = st.columns(3)
+                bb[0].button("현재가", key=f"sc0_{key}", disabled=cur is None, use_container_width=True,
+                             on_click=set_price_pct, args=(f"stop_{key}", cur, 0, mkt))
+                bb[1].button("-5%", key=f"sm5_{key}", disabled=cur is None, use_container_width=True,
+                             on_click=set_price_pct, args=(f"stop_{key}", cur, -5, mkt))
+                bb[2].button("-10%", key=f"sm10_{key}", disabled=cur is None, use_container_width=True,
+                             on_click=set_price_pct, args=(f"stop_{key}", cur, -10, mkt))
+            with kc:
+                st.checkbox("📈 신호변화\n알림", key=f"sig_{key}")
+            st.divider()
+
+        if st.button("💾 알림 설정 저장", type="primary"):
+            cfg = {}
+            for key in monitored:
+                entry = {"signal_alert": bool(st.session_state.get(f"sig_{key}", True))}
+                t = st.session_state.get(f"tgt_{key}") or 0
+                s = st.session_state.get(f"stop_{key}") or 0
+                if t > 0:
+                    entry["target"] = float(t)
+                if s > 0:
+                    entry["stop"] = float(s)
+                cfg[key] = entry
+            save_json(ALERTS_FILE, cfg)  # 로컬(또는 현재 컨테이너) 저장
+            ok, info = save_json_cloud("data/alerts.json", cfg, "알림 설정 업데이트 (대시보드)")
+            if ok:
+                st.success("저장 완료! ☁️ 클라우드에 반영됨 — 다음 점검(최대 30분)부터 자동 알림 적용. "
+                           "(앱이 잠시 새로고침될 수 있어요)")
+            elif info == "no-token":
+                st.success("저장 완료! (로컬) — 클라우드 자동 알림 반영은 GH_TOKEN 설정 후 가능해요.")
+            else:
+                st.warning(f"로컬 저장됨. 단, 클라우드 반영 실패: {info}")
 
     st.divider()
 
