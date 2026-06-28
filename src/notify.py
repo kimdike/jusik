@@ -87,5 +87,29 @@ def send(text: str, chat_id: str | None = None, token: str | None = None) -> tup
         return False, f"전송 오류: {e}"
 
 
+def send_photo(photo_path: str, caption: str = "",
+               chat_id: str | None = None, token: str | None = None) -> tuple[bool, str]:
+    """이미지 파일을 캡션과 함께 전송 (텔레그램 sendPhoto). (성공여부, 메시지)."""
+    token = token or resolve_token()
+    chat_id = chat_id or resolve_chat_id()
+    if not token:
+        return False, "봇 토큰을 찾을 수 없습니다."
+    if not chat_id:
+        return False, "chat_id 를 찾을 수 없습니다."
+    try:
+        with open(photo_path, "rb") as f:
+            resp = requests.post(
+                f"https://api.telegram.org/bot{token}/sendPhoto",
+                data={"chat_id": chat_id, "caption": caption[:1024]},
+                files={"photo": f},
+                timeout=30,
+            )
+        if resp.status_code == 200 and resp.json().get("ok"):
+            return True, "전송 성공"
+        return False, f"전송 실패: {resp.status_code} {resp.text[:200]}"
+    except Exception as e:
+        return False, f"전송 오류: {e}"
+
+
 def is_configured() -> bool:
     return bool(resolve_token() and resolve_chat_id())

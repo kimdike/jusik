@@ -27,6 +27,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: 한글 폰트 설치 (차트 이미지 한글 표시용)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-nanum && fc-cache -f
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

@@ -3,3 +3,4 @@ yfinance>=0.2.50
 pandas>=2.2
 numpy>=2.0
 requests>=2.32
+matplotlib>=3.8   # 알림에 차트 이미지 첨부용

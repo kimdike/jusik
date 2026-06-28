@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from . import notify, prices, signals
@@ -93,6 +94,7 @@ def run_once(send_telegram: bool = True) -> list[str]:
         band_key, band_label = band_of(res.get("up_pct"))
         prev = state.get(k, {})
         first_seen = not prev
+        cur_msgs: list[str] = []  # 이 종목에서 이번에 발생한 알림들
 
         # --- A1: 신호 변화 ---
         signal_on = cfg.get("signal_alert", True)  # 기본 켜짐
@@ -101,7 +103,7 @@ def run_once(send_telegram: bool = True) -> list[str]:
             if prev_band and prev_band != band_key and band_key != "none":
                 _, prev_label = band_of_label(prev_band)
                 arrow = "📈" if _band_rank(band_key) > _band_rank(prev_band) else "📉"
-                messages.append(
+                cur_msgs.append(
                     f"{arrow} [신호 변화] {name} ({sym})\n"
                     f"{prev_label} → {band_label} (상승우세 {res['up_pct']:.0f}%)\n"
                     f"현재가 {_fmt_price(cur, mkt)}"
@@ -113,25 +115,52 @@ def run_once(send_telegram: bool = True) -> list[str]:
         stop = cfg.get("stop")
         if not first_seen and prev_price is not None:
             if target and prev_price < target <= cur:
-                messages.append(
+                cur_msgs.append(
                     f"🎯 [목표가 도달] {name} ({sym})\n"
                     f"목표 {_fmt_price(target, mkt)} 도달 — 현재가 {_fmt_price(cur, mkt)}"
                 )
             if stop and prev_price > stop >= cur:
-                messages.append(
+                cur_msgs.append(
                     f"🛑 [손절가 도달] {name} ({sym})\n"
                     f"손절 {_fmt_price(stop, mkt)} 이탈 — 현재가 {_fmt_price(cur, mkt)}"
                 )
 
         state[k] = {"band": band_key, "price": cur}
 
+        if cur_msgs:
+            messages.extend(cur_msgs)
+            if send_telegram:
+                # 종목별 차트 이미지를 캡션과 함께 발송 (실패 시 텍스트로 폴백)
+                _send_with_chart(sym, mkt, name, df, cfg, "\n\n".join(cur_msgs))
+
     _save(STATE_FILE, state)
-
-    if send_telegram and messages:
-        for msg in messages:
-            notify.send(msg)
-
     return messages
+
+
+def _send_with_chart(sym: str, mkt: str, name: str, df, cfg: dict, caption: str) -> None:
+    """그 종목 차트(지지/저항+사용자 목표가 선)를 만들어 캡션과 함께 발송. 실패 시 텍스트로 폴백."""
+    import tempfile
+
+    path = None
+    try:
+        from . import chartimg
+        fd, path = tempfile.mkstemp(suffix=".png", prefix="alert_")
+        os.close(fd)
+        out = chartimg.render_chart(sym, mkt, name, path,
+                                    target=cfg.get("target"), df=df)
+        if out:
+            ok, _info = notify.send_photo(out, caption=caption)
+            if ok:
+                return
+    except Exception:
+        pass
+    finally:
+        if path and os.path.exists(path):
+            try:
+                os.remove(path)
+            except Exception:
+                pass
+    notify.send(caption)  # 차트 실패 시 텍스트만이라도
 
 
 def _band_rank(band_key: str) -> int:

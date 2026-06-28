@@ -47,9 +47,12 @@ def render_chart(
     period: str = "6mo",
     target: float | None = None,
     analyst_target: float | None = None,
+    df=None,
 ) -> str | None:
-    """종목 차트 이미지를 out_path(PNG)로 저장. 성공 시 경로, 실패 시 None."""
-    df = prices.get_ohlcv(symbol, market, period)
+    """종목 차트 이미지를 out_path(PNG)로 저장. 성공 시 경로, 실패 시 None.
+    df를 넘기면 재조회 없이 그대로 사용(알림 등에서 중복 조회 방지)."""
+    if df is None:
+        df = prices.get_ohlcv(symbol, market, period)
     if df is None or df.empty:
         return None
     is_us = market.upper() == "US"
