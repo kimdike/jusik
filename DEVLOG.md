@@ -59,9 +59,10 @@ jusik/
 │  ├─ search.py     # 이름 검색 (KRX/Yahoo/업비트/미국한글별칭)
 │  ├─ news.py       # Google News RSS + 분위기 요약(summarize_news)
 │  ├─ market.py     # 시장 개요(지수·공포탐욕·거시뉴스)
-│  ├─ notify.py     # 텔레그램 발송 (토큰 안전 해석)
+│  ├─ notify.py     # 텔레그램 발송 (send=텍스트 / send_photo=이미지+캡션, 토큰 안전 해석)
 │  ├─ gitstore.py   # GitHub Contents API로 설정 파일 커밋(클라우드 영구저장) — 알림설정 저장에 사용
-│  └─ alerts.py     # 알림 엔진 (신호변화/목표가/손절가, 상태저장)
+│  ├─ chartimg.py   # 차트 PNG 생성(matplotlib) — 지지/저항/목표가 선 + 근거 라벨. 알림 첨부/텔레그램용
+│  └─ alerts.py     # 알림 엔진 (신호변화/목표가/손절가, 상태저장) + 종목별 차트 첨부(_send_with_chart)
 ├─ data/
 │  ├─ portfolio.json   # 보유종목   (UI에서 편집/저장)
 │  ├─ watchlist.json   # 관심종목
@@ -115,6 +116,7 @@ jusik/
 ## 7. 알아둘 점 / 주의
 
 - **폰에서 목표가 편집**: 알림설정 페이지 저장 시 `data/alerts.json`을 GitHub에 커밋(gitstore). Streamlit Secrets에 `GH_TOKEN`(jusik repo Contents read/write 세밀권한 PAT) 필요. 토큰 있으면 "☁️ 클라우드 저장 연결됨" 표시, 저장 시 자동 알림에 반영(앱 잠시 재배포). 토큰 없으면 로컬 저장만.
+- **알림 차트 첨부**: 알림 발생 시 그 종목 차트(chartimg)를 만들어 notify.send_photo로 캡션과 함께 발송(_send_with_chart), 실패 시 텍스트 폴백. 차트엔 사용자 목표가(cfg.target) 선도 표시. 리눅스 러너 한글은 alerts.yml에서 fonts-nanum 설치(chartimg가 NanumGothic 경로 fallback).
 - **모바일 반응형**: CUSTOM_CSS에 @media(max-width:640px) — st.columns 세로 정렬, 카드값 nowrap, 표 가로스크롤(.table-scroll). 차트는 범례 하단 이동+부가트레이스 범례숨김+dragmode=pan+responsive.
 - **배포 운영**: 코드 수정 후 `git push` → Streamlit Cloud 자동 재배포(2~3분). 단 `data/portfolio.json`은 gitignore라 푸시 안 됨(로컬 전용). 앱 뷰어 인증 ON 상태(로그인해야 열람) — 변경은 Streamlit Manage app → Settings → Sharing.
 - **실행 전제**: 자동 알림(알림 설정)은 PC가 켜져 있거나 클라우드 배포 시에만 작동. 현재는 로컬.
