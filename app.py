@@ -15,6 +15,7 @@ from plotly.subplots import make_subplots
 
 from src import alerts as alert_engine
 from src import backtest as bt_mod
+from src import gitstore
 from src import glossary
 from src import indicators as ind
 from src import levels as lv_mod
@@ -107,6 +108,28 @@ hr { border-color: #E5E7EB; margin: 1rem 0; }
     background: #FFFFFF; border: 1px solid #E5E7EB; border-left: 4px solid #2563EB;
     border-radius: 12px; padding: 18px 22px; line-height: 1.7; font-size: 15px; color: #111827;
 }
+
+/* 표가 좁은 화면을 넘칠 때 가로 스크롤 (셀 겹침 방지) */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+/* ── 모바일 반응형 (≤640px) ─────────────────────────────
+   좁은 화면에서 st.columns가 옆으로 찌그러져 글자/숫자가 세로로 깨지는 걸 방지.
+   컬럼을 세로로 쌓고, 카드 값은 줄바꿈 금지, 표는 가로 스크롤. */
+@media (max-width: 640px) {
+    .block-container { padding-left: .6rem; padding-right: .6rem; padding-top: 1rem; max-width: 100%; }
+    [data-testid="stHorizontalBlock"] { flex-wrap: wrap !important; gap: .5rem !important; }
+    [data-testid="stHorizontalBlock"] > [data-testid="stColumn"],
+    [data-testid="stHorizontalBlock"] > [data-testid="column"] {
+        flex: 1 1 100% !important; width: 100% !important; min-width: 100% !important;
+    }
+    .card { padding: 13px 14px; }
+    .card .val { font-size: 22px; white-space: nowrap; }
+    .card .val.sm { font-size: 19px; white-space: nowrap; }
+    [data-testid="stMetricValue"] { font-size: 22px !important; white-space: nowrap; }
+    table.sig { font-size: .82rem; }
+    table.sig th, table.sig td { padding: 7px 8px !important; }
+    h1 { font-size: 22px !important; } h2 { font-size: 18px !important; }
+}
 </style>
 """
 
@@ -124,6 +147,25 @@ def load_json(path: Path, default):
 def save_json(path: Path, data) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def gh_config() -> tuple[str | None, str]:
+    """Streamlit secrets에서 GitHub 저장 설정 읽기. (토큰, repo). 없으면 (None, repo기본)."""
+    try:
+        token = st.secrets.get("GH_TOKEN")
+        repo = st.secrets.get("GH_REPO", "kimdike/jusik")
+        return (token or None), repo
+    except Exception:
+        return None, "kimdike/jusik"
+
+
+def save_json_cloud(rel_path: str, data, message: str) -> tuple[bool, str]:
+    """클라우드(secrets에 GH_TOKEN 있을 때)면 GitHub 저장소에도 커밋해 영구화."""
+    token, repo = gh_config()
+    if not token:
+        return False, "no-token"
+    content = json.dumps(data, ensure_ascii=False, indent=2)
+    return gitstore.save_file(repo, rel_path, content, message, token)
 
 
 # ---------------------------------------------------------------------------
@@ -331,6 +373,7 @@ def level_disp(signal: str, strength: int):
 # 차트 조작 설정: 마우스 휠 줌, 더블클릭 원상복구, 깔끔한 툴바
 CHART_CONFIG = {
     "scrollZoom": True,
+    "responsive": True,          # 화면 크기에 맞춰 차트 자동 리사이즈 (모바일 대응)
     "displaylogo": False,
     "doubleClick": "reset",
     "modeBarButtonsToRemove": ["select2d", "lasso2d"],
@@ -368,20 +411,21 @@ def make_chart(df: pd.DataFrame, all_ind: dict, title: str, levels: dict | None 
     # 일목균형표 구름대
     ichi = all_ind["ichimoku"]
     fig.add_trace(
-        go.Scatter(x=df.index, y=ichi["senkou_a"], name="선행A",
+        go.Scatter(x=df.index, y=ichi["senkou_a"], name="선행A", showlegend=False,
                    line=dict(width=0.5, color="rgba(46,204,113,0.5)")),
         row=1, col=1,
     )
     fig.add_trace(
         go.Scatter(x=df.index, y=ichi["senkou_b"], name="선행B", fill="tonexty",
-                   fillcolor="rgba(46,204,113,0.12)",
+                   fillcolor="rgba(46,204,113,0.12)", showlegend=False,
                    line=dict(width=0.5, color="rgba(231,76,60,0.5)")),
         row=1, col=1,
     )
 
     # --- RSI ---
     fig.add_trace(
-        go.Scatter(x=df.index, y=all_ind["rsi"], name="RSI", line=dict(color="#9b59b6")),
+        go.Scatter(x=df.index, y=all_ind["rsi"], name="RSI", showlegend=False,
+                   line=dict(color="#9b59b6")),
         row=2, col=1,
     )
     fig.add_hline(y=70, line_dash="dot", line_color="red", row=2, col=1)
@@ -390,11 +434,11 @@ def make_chart(df: pd.DataFrame, all_ind: dict, title: str, levels: dict | None 
     # --- MACD ---
     macd_df = all_ind["macd"]
     colors = ["#e74c3c" if v >= 0 else "#3498db" for v in macd_df["hist"].fillna(0)]
-    fig.add_trace(go.Bar(x=df.index, y=macd_df["hist"], name="히스토그램",
+    fig.add_trace(go.Bar(x=df.index, y=macd_df["hist"], name="히스토그램", showlegend=False,
                          marker_color=colors), row=3, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=macd_df["macd"], name="MACD",
+    fig.add_trace(go.Scatter(x=df.index, y=macd_df["macd"], name="MACD", showlegend=False,
                              line=dict(color="#2c3e50")), row=3, col=1)
-    fig.add_trace(go.Scatter(x=df.index, y=macd_df["signal"], name="시그널",
+    fig.add_trace(go.Scatter(x=df.index, y=macd_df["signal"], name="시그널", showlegend=False,
                              line=dict(color="#e67e22")), row=3, col=1)
 
     # 지지/저항 수평선 (가까운 것 위주)
@@ -409,12 +453,14 @@ def make_chart(df: pd.DataFrame, all_ind: dict, title: str, levels: dict | None 
                           row=1, col=1)
 
     fig.update_layout(
-        height=720, xaxis_rangeslider_visible=False, hovermode="x unified",
-        dragmode="zoom",
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        margin=dict(l=10, r=90, t=70, b=10),  # 오른쪽 지지/저항 라벨이 안 잘리게 여백 확보
+        height=640, xaxis_rangeslider_visible=False, hovermode="x unified",
+        dragmode="pan",  # 모바일에서 한 손가락 이동 + 핀치 확대가 자연스럽게
+        # 범례는 아래로 — 좁은 화면에서 상단 기간버튼·제목과 겹치지 않게
+        legend=dict(orientation="h", yanchor="top", y=-0.06, xanchor="left", x=0,
+                    font=dict(size=10)),
+        margin=dict(l=8, r=72, t=58, b=44),  # 오른쪽 지지/저항 라벨 여백 + 하단 범례 공간
     )
-    # 빠른 기간 버튼 (가격 차트 위) — 클릭하면 그 구간으로 확대
+    # 빠른 기간 버튼 (가격 차트 위) — 탭하면 그 구간으로 확대
     fig.update_xaxes(
         rangeselector=dict(
             buttons=[
@@ -424,7 +470,7 @@ def make_chart(df: pd.DataFrame, all_ind: dict, title: str, levels: dict | None 
                 dict(count=1, label="1년", step="year", stepmode="backward"),
                 dict(step="all", label="전체"),
             ],
-            x=0, y=1.08, font=dict(size=11),
+            x=0, y=1.05, font=dict(size=10), bgcolor="rgba(255,255,255,0.85)",
         ),
         row=1, col=1,
     )
@@ -784,10 +830,12 @@ def page_analysis():
         table.sig td[title] {{ cursor:help; }}
         .info {{ color:#9CA3AF; font-size:0.8em; margin-left:4px; }}
         </style>
+        <div class="table-scroll">
         <table class="sig">
           <tr><th>지표</th><th>신호</th><th>근거</th><th>중요도</th></tr>
           {rows_html}
         </table>
+        </div>
         """
         st.markdown(table_html, unsafe_allow_html=True)
 
@@ -1011,6 +1059,13 @@ def page_alerts():
         },
         key="alerts_editor",
     )
+    # 클라우드 영구저장 연결 상태 안내
+    _gh_token, _ = gh_config()
+    if _gh_token:
+        st.caption("☁️ 클라우드 저장 연결됨 — 저장하면 자동 알림(GitHub Actions)에도 바로 반영돼요.")
+    else:
+        st.caption("💾 현재 로컬 저장만 가능 — 폰/클라우드에서 영구 저장하려면 Streamlit Secrets에 GH_TOKEN 설정 필요.")
+
     if st.button("💾 알림 설정 저장", type="primary"):
         cfg = {}
         for _, r in edited.iterrows():
@@ -1021,8 +1076,15 @@ def page_alerts():
             if pd.notna(r["손절가"]):
                 entry["stop"] = float(r["손절가"])
             cfg[key] = entry
-        save_json(ALERTS_FILE, cfg)
-        st.success("저장 완료!")
+        save_json(ALERTS_FILE, cfg)  # 로컬(또는 현재 컨테이너) 저장
+        ok, info = save_json_cloud("data/alerts.json", cfg, "알림 설정 업데이트 (대시보드)")
+        if ok:
+            st.success("저장 완료! ☁️ 클라우드에 반영됨 — 다음 점검(최대 30분)부터 자동 알림 적용. "
+                       "(앱이 잠시 새로고침될 수 있어요)")
+        elif info == "no-token":
+            st.success("저장 완료! (로컬) — 클라우드 자동 알림 반영은 GH_TOKEN 설정 후 가능해요.")
+        else:
+            st.warning(f"로컬 저장됨. 단, 클라우드 반영 실패: {info}")
 
     if monitored == {}:
         st.info("워치리스트나 보유종목을 먼저 추가하면 여기 나타납니다.")
@@ -1150,9 +1212,10 @@ def make_backtest_chart(res: dict, dispname: str) -> go.Figure:
     fig.add_hline(y=p["sell_th"], line_dash="dash", line_color="rgba(37,99,235,0.6)",
                   annotation_text=f"청산 {p['sell_th']:.0f}", annotation_position="right", row=2, col=1)
     fig.update_layout(
-        height=560, hovermode="x unified",
-        legend=dict(orientation="h", yanchor="bottom", y=1.04, xanchor="right", x=1),
-        margin=dict(l=10, r=70, t=60, b=10),
+        height=560, hovermode="x unified", dragmode="pan",
+        legend=dict(orientation="h", yanchor="top", y=-0.08, xanchor="left", x=0,
+                    font=dict(size=10)),
+        margin=dict(l=8, r=70, t=54, b=40),
     )
     return fig
 
