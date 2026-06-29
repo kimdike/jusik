@@ -116,7 +116,8 @@ jusik/
 ## 7. 알아둘 점 / 주의
 
 - **폰에서 목표가 편집**: 알림설정 페이지 저장 시 `data/alerts.json`을 GitHub에 커밋(gitstore). Streamlit Secrets에 `GH_TOKEN`(jusik repo Contents read/write 세밀권한 PAT) 필요. 토큰 있으면 "☁️ 클라우드 저장 연결됨" 표시, 저장 시 자동 알림에 반영(앱 잠시 재배포). 토큰 없으면 로컬 저장만.
-- **알림 차트 첨부**: 알림 발생 시 그 종목 차트(chartimg)를 만들어 notify.send_photo로 캡션과 함께 발송(_send_with_chart), 실패 시 텍스트 폴백. 차트엔 사용자 목표가(cfg.target) 선도 표시. 리눅스 러너 한글은 alerts.yml에서 fonts-nanum 설치(chartimg가 NanumGothic 경로 fallback).
+- **알림 종류**: 신호변화 / 🎯목표가(이상) / 🟢매수자리=진입가(이하) / 🛑손절가(이하). alerts.json 키: target/entry/stop/signal_alert. 대시보드 알림설정에서 종목별 입력+버튼(현재가대비 %)으로 설정, 저장 시 GitHub 반영.
+- **알림 차트 첨부**: 알림 발생 시 그 종목 차트(chartimg)를 만들어 notify.send_photo로 캡션과 함께 발송(_send_with_chart), 실패 시 텍스트 폴백. 차트엔 사용자 목표가(초록)·매수자리(청록) 선도 표시. 리눅스 러너 한글은 alerts.yml에서 fonts-nanum 설치(chartimg가 NanumGothic 경로 fallback).
 - **모바일 반응형**: CUSTOM_CSS에 @media(max-width:640px) — st.columns 세로 정렬, 카드값 nowrap, 표 가로스크롤(.table-scroll). 차트는 범례 하단 이동+부가트레이스 범례숨김+dragmode=pan+responsive.
 - **배포 운영**: 코드 수정 후 `git push` → Streamlit Cloud 자동 재배포(2~3분). 단 `data/portfolio.json`은 gitignore라 푸시 안 됨(로컬 전용). 앱 뷰어 인증 ON 상태(로그인해야 열람) — 변경은 Streamlit Manage app → Settings → Sharing.
 - **실행 전제**: 자동 알림(알림 설정)은 PC가 켜져 있거나 클라우드 배포 시에만 작동. 현재는 로컬.

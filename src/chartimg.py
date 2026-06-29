@@ -46,6 +46,7 @@ def render_chart(
     out_path: str,
     period: str = "6mo",
     target: float | None = None,
+    entry: float | None = None,
     analyst_target: float | None = None,
     df=None,
 ) -> str | None:
@@ -110,6 +111,13 @@ def render_chart(
         gap = (target - cur) / cur * 100 if cur else 0
         ax.axhline(target, color="#16A34A", lw=1.8)
         ax.text(x_right, target, f"  목표가 {fp(target)} ({gap:+.1f}%)", color="#16A34A",
+                va="center", fontsize=9.5, fontweight="bold")
+
+    # 사용자 진입가 = 매수 자리 (청록 실선)
+    if entry:
+        gap = (entry - cur) / cur * 100 if cur else 0
+        ax.axhline(entry, color="#0891B2", lw=1.8)
+        ax.text(x_right, entry, f"  매수자리 {fp(entry)} ({gap:+.1f}%)", color="#0891B2",
                 va="center", fontsize=9.5, fontweight="bold")
 
     up = res.get("up_pct")

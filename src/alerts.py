@@ -109,15 +109,21 @@ def run_once(send_telegram: bool = True) -> list[str]:
                     f"현재가 {_fmt_price(cur, mkt)}"
                 )
 
-        # --- A2: 목표가 / 손절가 ---
+        # --- A2: 목표가 / 진입가(매수 자리) / 손절가 ---
         prev_price = prev.get("price")
         target = cfg.get("target")
+        entry = cfg.get("entry")
         stop = cfg.get("stop")
         if not first_seen and prev_price is not None:
             if target and prev_price < target <= cur:
                 cur_msgs.append(
                     f"🎯 [목표가 도달] {name} ({sym})\n"
                     f"목표 {_fmt_price(target, mkt)} 도달 — 현재가 {_fmt_price(cur, mkt)}"
+                )
+            if entry and prev_price > entry >= cur:
+                cur_msgs.append(
+                    f"🟢 [매수 자리 도달] {name} ({sym})\n"
+                    f"진입 희망가 {_fmt_price(entry, mkt)} 도달 — 현재가 {_fmt_price(cur, mkt)}"
                 )
             if stop and prev_price > stop >= cur:
                 cur_msgs.append(
@@ -147,7 +153,7 @@ def _send_with_chart(sym: str, mkt: str, name: str, df, cfg: dict, caption: str)
         fd, path = tempfile.mkstemp(suffix=".png", prefix="alert_")
         os.close(fd)
         out = chartimg.render_chart(sym, mkt, name, path,
-                                    target=cfg.get("target"), df=df)
+                                    target=cfg.get("target"), entry=cfg.get("entry"), df=df)
         if out:
             ok, _info = notify.send_photo(out, caption=caption)
             if ok:

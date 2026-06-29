@@ -1092,6 +1092,7 @@ def page_alerts():
             cur = cur_map.get(key)
             cfg = existing.get(key, {})
             st.session_state.setdefault(f"tgt_{key}", float(cfg.get("target") or 0.0))
+            st.session_state.setdefault(f"ent_{key}", float(cfg.get("entry") or 0.0))
             st.session_state.setdefault(f"stop_{key}", float(cfg.get("stop") or 0.0))
             st.session_state.setdefault(f"sig_{key}", bool(cfg.get("signal_alert", True)))
             tick = alert_tick(cur, mkt)
@@ -1101,7 +1102,7 @@ def page_alerts():
                 f'<div style="margin-top:6px"><b style="font-size:15px">{html_lib.escape(name)}</b>'
                 f'&nbsp; <span style="color:#6B7280">현재가</span> '
                 f'<b>{fmt_native(cur, mkt)}</b></div>', unsafe_allow_html=True)
-            tc, sc, kc = st.columns([3, 3, 2])
+            tc, ec, sc, kc = st.columns([3, 3, 3, 2])
             with tc:
                 st.number_input("🎯 목표가 (이상이면 알림)", key=f"tgt_{key}",
                                 min_value=0.0, step=float(tick), format=fmt)
@@ -1112,6 +1113,17 @@ def page_alerts():
                              on_click=set_price_pct, args=(f"tgt_{key}", cur, 5, mkt))
                 bb[2].button("+10%", key=f"tp10_{key}", disabled=cur is None, use_container_width=True,
                              on_click=set_price_pct, args=(f"tgt_{key}", cur, 10, mkt))
+            with ec:
+                st.number_input("🟢 매수자리 (이하면 알림)", key=f"ent_{key}",
+                                min_value=0.0, step=float(tick), format=fmt,
+                                help="현재가가 이 값까지 내려오면 '매수 자리' 알림")
+                bb = st.columns(3)
+                bb[0].button("-3%", key=f"em3_{key}", disabled=cur is None, use_container_width=True,
+                             on_click=set_price_pct, args=(f"ent_{key}", cur, -3, mkt))
+                bb[1].button("-5%", key=f"em5_{key}", disabled=cur is None, use_container_width=True,
+                             on_click=set_price_pct, args=(f"ent_{key}", cur, -5, mkt))
+                bb[2].button("-10%", key=f"em10_{key}", disabled=cur is None, use_container_width=True,
+                             on_click=set_price_pct, args=(f"ent_{key}", cur, -10, mkt))
             with sc:
                 st.number_input("🛑 손절가 (이하면 알림)", key=f"stop_{key}",
                                 min_value=0.0, step=float(tick), format=fmt)
@@ -1129,14 +1141,17 @@ def page_alerts():
         if st.button("💾 알림 설정 저장", type="primary"):
             cfg = {}
             for key in monitored:
-                entry = {"signal_alert": bool(st.session_state.get(f"sig_{key}", True))}
+                ent = {"signal_alert": bool(st.session_state.get(f"sig_{key}", True))}
                 t = st.session_state.get(f"tgt_{key}") or 0
+                e = st.session_state.get(f"ent_{key}") or 0
                 s = st.session_state.get(f"stop_{key}") or 0
                 if t > 0:
-                    entry["target"] = float(t)
+                    ent["target"] = float(t)
+                if e > 0:
+                    ent["entry"] = float(e)
                 if s > 0:
-                    entry["stop"] = float(s)
-                cfg[key] = entry
+                    ent["stop"] = float(s)
+                cfg[key] = ent
             save_json(ALERTS_FILE, cfg)  # 로컬(또는 현재 컨테이너) 저장
             ok, info = save_json_cloud("data/alerts.json", cfg, "알림 설정 업데이트 (대시보드)")
             if ok:

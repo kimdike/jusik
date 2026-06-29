@@ -1,8 +1,52 @@
 [
-  {"name": "삼성전자", "symbol": "005930", "market": "KR"},
-  {"name": "SK하이닉스", "symbol": "000660", "market": "KR"},
-  {"name": "엔비디아", "symbol": "NVDA", "market": "US"},
-  {"name": "테슬라", "symbol": "TSLA", "market": "US"},
-  {"name": "비트코인", "symbol": "BTC", "market": "COIN"},
-  {"name": "이더리움", "symbol": "ETH", "market": "COIN"}
+  {
+    "name": "삼성전자",
+    "symbol": "005930",
+    "market": "KR"
+  },
+  {
+    "name": "SK하이닉스",
+    "symbol": "000660",
+    "market": "KR"
+  },
+  {
+    "name": "엔비디아",
+    "symbol": "NVDA",
+    "market": "US"
+  },
+  {
+    "name": "테슬라",
+    "symbol": "TSLA",
+    "market": "US"
+  },
+  {
+    "name": "비트코인",
+    "symbol": "BTC",
+    "market": "COIN"
+  },
+  {
+    "name": "이더리움",
+    "symbol": "ETH",
+    "market": "COIN"
+  },
+  {
+    "name": "LG전자",
+    "symbol": "066570",
+    "market": "KR"
+  },
+  {
+    "name": "도지코인",
+    "symbol": "DOGE",
+    "market": "COIN"
+  },
+  {
+    "name": "S&P500(SPY)",
+    "symbol": "SPY",
+    "market": "US"
+  },
+  {
+    "name": "금(KRX금현물)",
+    "symbol": "411060",
+    "market": "KR"
+  }
 ]
