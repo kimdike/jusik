@@ -136,11 +136,47 @@ def run_once(send_telegram: bool = True) -> list[str]:
         if cur_msgs:
             messages.extend(cur_msgs)
             if send_telegram:
-                # 종목별 차트 이미지를 캡션과 함께 발송 (실패 시 텍스트로 폴백)
-                _send_with_chart(sym, mkt, name, df, cfg, "\n\n".join(cur_msgs))
+                # 종목별 차트 + 가격 정리(현재가 아래 진입타점)를 캡션에 붙여 발송
+                caption = "\n\n".join(cur_msgs) + "\n\n" + _price_brief(mkt, df, cfg)
+                _send_with_chart(sym, mkt, name, df, cfg, caption)
 
     _save(STATE_FILE, state)
     return messages
+
+
+def _price_brief(mkt: str, df, cfg: dict) -> str:
+    """알림 캡션에 붙일 '가격 정리' — 현재가 아래로 목표가/매수자리/손절가 + 주요 지지·저항(타점)."""
+    from . import indicators as ind
+    from . import levels as lv
+
+    cur = float(df["close"].iloc[-1])
+
+    def f(v):
+        return _fmt_price(v, mkt)
+
+    def pct(v):
+        return f"({(v - cur) / cur * 100:+.1f}%)" if cur else ""
+
+    lines = ["📊 가격 정리", f"현재가 {f(cur)}"]
+    if cfg.get("target"):
+        lines.append(f"🎯 목표가 {f(cfg['target'])} {pct(cfg['target'])}")
+    if cfg.get("entry"):
+        lines.append(f"🟢 매수자리 {f(cfg['entry'])} {pct(cfg['entry'])}")
+    if cfg.get("stop"):
+        lines.append(f"🛑 손절가 {f(cfg['stop'])} {pct(cfg['stop'])}")
+    try:
+        L = lv.compute_levels(df, ind.compute_all(df))
+        res = (L.get("resistances") or [])[:2]
+        sup = (L.get("supports") or [])[:2]
+        if res:
+            lines.append("⬆ 저항(매도/돌파 타점): "
+                         + " · ".join(f"{f(r['price'])} {pct(r['price'])}" for r in res))
+        if sup:
+            lines.append("⬇ 지지(매수 타점): "
+                         + " · ".join(f"{f(s['price'])} {pct(s['price'])}" for s in sup))
+    except Exception:
+        pass
+    return "\n".join(lines)
 
 
 def _send_with_chart(sym: str, mkt: str, name: str, df, cfg: dict, caption: str) -> None:
