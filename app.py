@@ -1603,6 +1603,66 @@ def page_compare():
 
 
 # ---------------------------------------------------------------------------
+# 페이지: 종목 발굴 (스크리너)
+# ---------------------------------------------------------------------------
+DISCOVERY_FILE = DATA_DIR / "discovery.json"
+
+
+def page_discovery():
+    st.title("종목 발굴")
+    st.caption("가치(저PER·저PBR·배당·52주 저점) + 타이밍(우상향 추세 속 눌림목)으로 매수 후보를 자동으로 추려요. "
+               "매일 밤 스캔 · 투자 권유가 아닌 후보 탐색 참고용입니다.")
+
+    data = load_json(DISCOVERY_FILE, {})
+    cands = data.get("candidates", [])
+    if not cands:
+        st.info("아직 발굴 결과가 없어요. 매일 밤 자동 스캔되며, 깃허브 Actions에서 '종목 발굴 스캔'을 수동 실행할 수도 있어요.")
+        return
+
+    st.caption(f"🕒 마지막 스캔: {data.get('generated', '-')} · 대상 {data.get('universe', '?')}종목 · "
+               f"후보 {len(cands)}개 (스캔 {data.get('scanned', '?')}, 실패 {data.get('failed', 0)})")
+
+    flt = st.radio("필터", ["🎯 지금 매수자리 (조합)", "💰 가치 상위", "전체"], horizontal=True)
+    if flt.startswith("🎯"):
+        rows = [c for c in cands if c.get("combo")]
+        rows.sort(key=lambda c: (c["value_score"], c.get("up_pct") or 0), reverse=True)
+    elif flt.startswith("💰"):
+        rows = sorted(cands, key=lambda c: c["value_score"], reverse=True)
+    else:
+        rows = cands
+    if not rows:
+        st.caption("조건에 맞는 후보가 없어요. 필터를 바꿔보세요.")
+        return
+
+    view = [{
+        "종목": c["name"],
+        "시장": MARKET_LABELS.get(c["market"], c["market"]),
+        "현재가": fmt_native(c["price"], c["market"]),
+        "가치점수": c["value_score"],
+        "종합신호": c.get("up_pct"),
+        "RSI": c.get("rsi"),
+        "PER": c.get("per"),
+        "PBR": c.get("pbr"),
+        "배당%": c.get("div"),
+        "52주위치": c.get("week52_pos"),
+        "매수자리": "🎯" if c.get("combo") else "",
+    } for c in rows]
+    st.dataframe(
+        pd.DataFrame(view), use_container_width=True, hide_index=True,
+        column_config={
+            "가치점수": st.column_config.ProgressColumn("가치점수", min_value=0, max_value=100, format="%d",
+                                                    help="저평가 정도(0~100): 저PER·저PBR·고배당·52주 저점일수록 높음"),
+            "종합신호": st.column_config.ProgressColumn("종합신호", min_value=0, max_value=100, format="%.0f%%"),
+            "52주위치": st.column_config.NumberColumn("52주위치", format="%d%%", help="0=52주 최저, 100=최고"),
+            "배당%": st.column_config.NumberColumn("배당%", format="%.2f%%"),
+        },
+    )
+    st.caption("🎯 = 장기 우상향 추세 속 단기 눌림목(지금 매수 관심 구간). 가치점수가 높을수록 저평가. "
+               "한국주식은 PER/PBR 데이터가 비어 있는 경우가 많아 배당·52주 위치 위주로 평가됩니다. "
+               "자세한 분석은 ‘기술적 분석’에서 해당 종목을 검색하세요.")
+
+
+# ---------------------------------------------------------------------------
 # 메인
 # ---------------------------------------------------------------------------
 def _guide_card(title: str, desc: str, accent: str = "#2563EB") -> str:
@@ -1635,7 +1695,7 @@ def page_guide():
                       "표·상세는 접이식이라 필요할 때만 펼치면 됩니다."),
         unsafe_allow_html=True)
 
-    st.subheader("메뉴 8개")
+    st.subheader("메뉴 9개")
     st.markdown(
         _guide_card("📊 기술적 분석",
                     "한 종목을 깊게 분석. 결론 3카드 → 차트(이동평균·일목·지지저항) → 지표 요약 → "
@@ -1644,6 +1704,9 @@ def page_guide():
         + _guide_card("🔭 스캐너",
                       "워치리스트와 보유 종목의 종합 신호를 <b>한 번에 계산해 강한 순으로 랭킹</b>해요. "
                       "‘상승 우세만’ 필터로 지금 주목할 종목을 빠르게 추려볼 수 있어요.", "#7C3AED")
+        + _guide_card("🔎 발굴",
+                      "주요 종목을 매일 밤 자동 스캔해 <b>가치(저PER·저PBR·배당·52주저점) + 타이밍(우상향 속 눌림목)</b> "
+                      "기준으로 <b>매수 후보</b>를 추려줘요. 워치리스트 밖에서 새 종목을 찾을 때.", "#0D9488")
         + _guide_card("🧪 백테스트",
                       "‘이 신호대로 과거에 매매했다면?’을 검증해요. <b>신호 전략 vs 그냥 보유</b> 수익률을 "
                       "비교하고 거래 횟수·승률·최대낙폭을 보여줘 <b>신호의 신뢰도</b>를 가늠하게 해줘요. "
@@ -1709,7 +1772,7 @@ def main():
         st.session_state["show_guide"] = True
 
     page = st.sidebar.radio(
-        "메뉴", ["기술적 분석", "스캐너", "백테스트", "비교", "시장 개요", "내 자산", "워치리스트", "알림 설정"],
+        "메뉴", ["기술적 분석", "스캐너", "발굴", "백테스트", "비교", "시장 개요", "내 자산", "워치리스트", "알림 설정"],
         on_change=_clear_guide)
     st.sidebar.divider()
     st.sidebar.caption(
@@ -1723,6 +1786,8 @@ def main():
         page_analysis()
     elif page == "스캐너":
         page_scanner()
+    elif page == "발굴":
+        page_discovery()
     elif page == "백테스트":
         page_backtest()
     elif page == "비교":

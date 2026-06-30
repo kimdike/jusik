@@ -1,0 +1,39 @@
+name: 종목 발굴 스캔
+
+# 매일 밤 유니버스(data/universe.json)를 스캔해 가치+타이밍 후보를 추리고
+# data/discovery.json 을 저장(커밋)한다. 대시보드 '발굴' 메뉴가 이 결과를 표시.
+
+on:
+  schedule:
+    - cron: "0 21 * * *"   # UTC 21:00 = KST 06:00 (미국장 마감 후, 아침 브리핑 전)
+  workflow_dispatch:
+
+permissions:
+  contents: write          # discovery.json 결과를 저장소에 커밋
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-alerts.txt
+
+      - name: 의존성 설치 (경량)
+        run: pip install -r requirements-alerts.txt
+
+      - name: 발굴 스캔 실행
+        run: python alerts_run.py --discover
+
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/discovery.json
+          git diff --staged --quiet || git commit -m "발굴 스캔 결과 자동 업데이트 [skip ci]"
+          git push

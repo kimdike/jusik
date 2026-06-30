@@ -42,6 +42,7 @@ def main() -> None:
     ap.add_argument("--loop", type=int, metavar="MIN", help="N분마다 반복 실행")
     ap.add_argument("--test", action="store_true", help="텔레그램 테스트 메시지 발송")
     ap.add_argument("--brief", action="store_true", help="워치리스트 아침 브리핑 발송")
+    ap.add_argument("--discover", action="store_true", help="종목 발굴 스캔 → discovery.json 저장")
     args = ap.parse_args()
 
     if args.test:
@@ -53,6 +54,13 @@ def main() -> None:
         text = alerts.build_briefing(send_telegram=True)
         print(f"[{_ts()}] 브리핑 발송:")
         print(text)
+        return
+
+    if args.discover:
+        from src import discovery
+        r = discovery.run_and_save(timestamp=_ts())
+        combo = sum(1 for c in r["candidates"] if c.get("combo"))
+        print(f"[{_ts()}] 발굴 스캔: 후보 {len(r['candidates'])}/{r['scanned']} (매수자리 {combo}) · 실패 {r['failed']}")
         return
 
     if not notify.is_configured():
