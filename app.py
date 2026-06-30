@@ -1492,6 +1492,91 @@ def page_scanner():
 
 
 # ---------------------------------------------------------------------------
+# 페이지: 종목 비교
+# ---------------------------------------------------------------------------
+def page_compare():
+    st.title("종목 비교")
+    st.caption("관심·보유 종목을 2~4개 골라 신호·지표·수익률을 나란히 비교합니다.")
+
+    pf = load_json(PORTFOLIO_FILE, [])
+    wl = load_json(WATCHLIST_FILE, [])
+    options = {}
+    for item in wl + pf:
+        nm = item.get("name", item["symbol"])
+        key = f"{nm} ({item['symbol']}/{item['market']})"
+        options[key] = (item["symbol"], item["market"], nm)
+    if not options:
+        st.info("워치리스트나 보유종목을 먼저 추가해 주세요.")
+        return
+
+    default = list(options.keys())[: min(3, len(options))]
+    picked = st.multiselect("비교할 종목 (2~4개)", list(options.keys()),
+                            default=default, max_selections=4)
+    period_label = st.radio("기간", list(PERIOD_OPTIONS.keys()), index=1, horizontal=True)
+    period = PERIOD_OPTIONS[period_label]
+
+    if len(picked) < 2:
+        st.info("2개 이상 선택하면 비교가 나타납니다.")
+        return
+
+    rows = []
+    chart = go.Figure()
+    palette = ["#2563EB", "#E53935", "#16A34A", "#CA8A04"]
+    with st.spinner("비교 데이터 불러오는 중..."):
+        for i, key in enumerate(picked):
+            sym, mkt, nm = options[key]
+            df = fetch_ohlcv(sym, mkt, period)
+            if df.empty:
+                continue
+            all_ind = ind.compute_all(df)
+            res = signals.evaluate(df)
+            fund = fetch_fundamentals(sym, mkt) if mkt != "COIN" else {}
+            cur = float(df["close"].iloc[-1])
+            first = float(df["close"].iloc[0])
+            pr = (cur - first) / first * 100 if first else 0.0
+            rsi_s = all_ind.get("rsi")
+            rsi = float(rsi_s.dropna().iloc[-1]) if rsi_s is not None and not rsi_s.dropna().empty else None
+            slope = all_ind.get("trend_slope")
+            trend = "상승" if slope and slope > 0.15 else "하락" if slope and slope < -0.15 else "횡보"
+            pos = fund.get("week52_pos")
+            rows.append({
+                "종목": nm,
+                "현재가": fmt_native(cur, mkt),
+                f"{period_label} 수익률": round(pr, 1),
+                "종합신호": res["up_pct"],
+                "RSI": round(rsi) if rsi is not None else None,
+                "추세": trend,
+                "52주위치": (round(pos * 100) if pos is not None else None),
+                "목표가괴리": (round(fund["target_upside"], 1) if fund.get("target_upside") is not None else None),
+            })
+            chart.add_trace(go.Scatter(x=df.index, y=df["close"] / first * 100, name=nm,
+                                       line=dict(color=palette[i % len(palette)], width=1.8)))
+
+    if not rows:
+        st.warning("데이터를 불러오지 못했어요.")
+        return
+
+    st.dataframe(
+        pd.DataFrame(rows), use_container_width=True, hide_index=True,
+        column_config={
+            "종합신호": st.column_config.ProgressColumn("종합신호", min_value=0, max_value=100, format="%.0f%%"),
+            f"{period_label} 수익률": st.column_config.NumberColumn(f"{period_label} 수익률", format="%+.1f%%"),
+            "52주위치": st.column_config.NumberColumn("52주위치", format="%d%%", help="0=52주 최저, 100=최고"),
+            "목표가괴리": st.column_config.NumberColumn("목표가괴리", format="%+.1f%%", help="전문가 평균 목표가까지 여력(+)/초과(-)"),
+        },
+    )
+
+    chart.update_layout(
+        title=f"정규화 가격 비교 (시작일=100, {period_label})", height=460, hovermode="x unified",
+        dragmode="pan", legend=dict(orientation="h", yanchor="top", y=-0.08, xanchor="left", x=0),
+        margin=dict(l=8, r=20, t=50, b=40),
+    )
+    chart.add_hline(y=100, line_dash="dot", line_color="#D1D5DB")
+    st.plotly_chart(chart, use_container_width=True, config=CHART_CONFIG)
+    st.caption("정규화 = 시작일을 100으로 맞춰 같은 기간 상대 수익률을 비교. 종합신호·지표는 보조 참고용입니다.")
+
+
+# ---------------------------------------------------------------------------
 # 메인
 # ---------------------------------------------------------------------------
 def _guide_card(title: str, desc: str, accent: str = "#2563EB") -> str:
@@ -1524,7 +1609,7 @@ def page_guide():
                       "표·상세는 접이식이라 필요할 때만 펼치면 됩니다."),
         unsafe_allow_html=True)
 
-    st.subheader("메뉴 7개")
+    st.subheader("메뉴 8개")
     st.markdown(
         _guide_card("📊 기술적 분석",
                     "한 종목을 깊게 분석. 결론 3카드 → 차트(이동평균·일목·지지저항) → 지표 요약 → "
@@ -1537,6 +1622,9 @@ def page_guide():
                       "‘이 신호대로 과거에 매매했다면?’을 검증해요. <b>신호 전략 vs 그냥 보유</b> 수익률을 "
                       "비교하고 거래 횟수·승률·최대낙폭을 보여줘 <b>신호의 신뢰도</b>를 가늠하게 해줘요. "
                       "과거 성과가 미래를 보장하진 않아요.", "#0891B2")
+        + _guide_card("⚖️ 비교",
+                      "관심·보유 종목을 2~4개 골라 <b>신호·수익률·지표·정규화 차트</b>를 나란히 비교해요. "
+                      "어느 종목이 더 강한지 한눈에.", "#9333EA")
         + _guide_card("🌡️ 시장 개요",
                       "전체 장 분위기. 코스피·코스닥·S&P500·나스닥·환율·VIX 등락률, "
                       "코인 공포·탐욕 지수, 시장 거시 뉴스를 모아 봅니다.", "#16A34A")
@@ -1595,7 +1683,7 @@ def main():
         st.session_state["show_guide"] = True
 
     page = st.sidebar.radio(
-        "메뉴", ["기술적 분석", "스캐너", "백테스트", "시장 개요", "내 자산", "워치리스트", "알림 설정"],
+        "메뉴", ["기술적 분석", "스캐너", "백테스트", "비교", "시장 개요", "내 자산", "워치리스트", "알림 설정"],
         on_change=_clear_guide)
     st.sidebar.divider()
     st.sidebar.caption(
@@ -1611,6 +1699,8 @@ def main():
         page_scanner()
     elif page == "백테스트":
         page_backtest()
+    elif page == "비교":
+        page_compare()
     elif page == "시장 개요":
         page_market()
     elif page == "내 자산":
