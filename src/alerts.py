@@ -205,6 +205,50 @@ def _send_with_chart(sym: str, mkt: str, name: str, df, cfg: dict, caption: str)
     notify.send(caption)  # 차트 실패 시 텍스트만이라도
 
 
+def build_briefing(send_telegram: bool = True) -> str:
+    """워치리스트/보유 종목 전체를 신호 강한 순으로 요약한 '아침 브리핑' 텍스트.
+    각 종목: 현재가·전일대비·종합신호·(설정 시) 매수자리/목표가까지 거리."""
+    alerts_cfg = _load(ALERTS_FILE, {})
+    monitored = _monitored()
+    rows = []
+    for k, info in monitored.items():
+        sym, mkt, name = info["symbol"], info["market"], info["name"]
+        df = prices.get_ohlcv(sym, mkt, "6mo")
+        if df is None or df.empty:
+            continue
+        cur = float(df["close"].iloc[-1])
+        prev = float(df["close"].iloc[-2]) if len(df) >= 2 else cur
+        chg = (cur - prev) / prev * 100 if prev else 0.0
+        res = signals.evaluate(df)
+        up = res.get("up_pct")
+        rows.append((up if up is not None else -1, name, mkt, cur, chg, up, alerts_cfg.get(k, {})))
+
+    rows.sort(key=lambda r: r[0], reverse=True)  # 신호 강한 순
+
+    lines = ["🌅 오늘의 워치리스트 브리핑", ""]
+    for _, name, mkt, cur, chg, up, cfg in rows:
+        _, band = band_of(up)
+        arrow = "🔺" if chg > 0 else ("🔻" if chg < 0 else "▪️")
+        head = f"{name}  {_fmt_price(cur, mkt)} {arrow}{chg:+.1f}%  · 신호 {up:.0f}({band})" if up is not None \
+            else f"{name}  {_fmt_price(cur, mkt)} {arrow}{chg:+.1f}%  · 신호 -"
+        extras = []
+        if cfg.get("entry"):
+            d = (cfg["entry"] - cur) / cur * 100 if cur else 0
+            extras.append(f"매수자리까지 {d:+.1f}%")
+        if cfg.get("target"):
+            d = (cfg["target"] - cur) / cur * 100 if cur else 0
+            extras.append(f"목표가까지 {d:+.1f}%")
+        line = "• " + head + (("\n   " + " · ".join(extras)) if extras else "")
+        lines.append(line)
+
+    lines.append("")
+    lines.append("※ 보조 지표 요약 · 투자 판단은 본인 책임")
+    text = "\n".join(lines)
+    if send_telegram:
+        notify.send(text)
+    return text
+
+
 def _band_rank(band_key: str) -> int:
     return {"strong_bear": 0, "bear": 1, "none": 2, "neutral": 2, "bull": 3, "strong_bull": 4}.get(band_key, 2)
 

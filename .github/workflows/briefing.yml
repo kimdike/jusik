@@ -1,0 +1,33 @@
+name: 아침 브리핑
+
+# 매일 장 시작 전(한국시간 아침) 워치리스트 전체 요약을 텔레그램으로 1회 발송.
+
+on:
+  schedule:
+    - cron: "0 23 * * 0-4"   # UTC 23:00 = KST 08:00 (월~금 아침; UTC 일~목)
+  workflow_dispatch:          # 수동 실행 버튼
+
+permissions:
+  contents: read
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-alerts.txt
+
+      - name: 의존성 설치 (경량)
+        run: pip install -r requirements-alerts.txt
+
+      - name: 아침 브리핑 발송
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python alerts_run.py --brief

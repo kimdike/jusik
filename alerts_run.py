@@ -41,11 +41,18 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="주식 알림 러너")
     ap.add_argument("--loop", type=int, metavar="MIN", help="N분마다 반복 실행")
     ap.add_argument("--test", action="store_true", help="텔레그램 테스트 메시지 발송")
+    ap.add_argument("--brief", action="store_true", help="워치리스트 아침 브리핑 발송")
     args = ap.parse_args()
 
     if args.test:
         ok, info = notify.send("🔔 [테스트] 주식 대시보드 알림이 정상 연결됐어요!")
         print("테스트 발송:", "성공 ✅" if ok else f"실패 ❌ ({info})")
+        return
+
+    if args.brief:
+        text = alerts.build_briefing(send_telegram=True)
+        print(f"[{_ts()}] 브리핑 발송:")
+        print(text)
         return
 
     if not notify.is_configured():
