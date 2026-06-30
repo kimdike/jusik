@@ -83,13 +83,20 @@ def _resolve_universe() -> list[tuple[str, str, str]]:
     except Exception:
         return []
     out: list[tuple[str, str, str]] = []
-    catalog = {str(c.get("name")): str(c.get("code")) for c in search._kr_catalog()}
-    for nm in uni.get("kr", []):
-        code = catalog.get(nm)
-        if code:
-            out.append((nm, code, "KR"))
+    catalog = None  # KRX 목록은 '문자열 종목명'이 있을 때만(폴백) 지연 로드
+    for item in uni.get("kr", []):
+        if isinstance(item, dict):  # {name, code} — KRX 조회 불필요(견고)
+            nm, code = item.get("name"), item.get("code")
+            if nm and code:
+                out.append((str(nm), str(code), "KR"))
+        else:  # 문자열 종목명 → KRX 목록에서 코드 해석(로컬 폴백)
+            if catalog is None:
+                catalog = {str(c.get("name")): str(c.get("code")) for c in search._kr_catalog()}
+            code = catalog.get(str(item))
+            if code:
+                out.append((str(item), code, "KR"))
     for tk in uni.get("us", []):
-        out.append((tk, tk, "US"))
+        out.append((str(tk), str(tk), "US"))
     return out
 
 
