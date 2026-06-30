@@ -989,6 +989,7 @@ def page_watchlist():
                     else:
                         wl.append({"name": r["name"], "symbol": r["symbol"], "market": r["market"]})
                         save_json(WATCHLIST_FILE, wl)
+                        save_json_cloud("data/watchlist.json", wl, "워치리스트 종목 추가 (대시보드)")
                         st.success(f"{r['name']} 추가됨!")
                         st.rerun()
             else:
@@ -1006,9 +1007,19 @@ def page_watchlist():
         },
         key="watchlist_editor",
     )
+    _gh_token, _ = gh_config()
+    st.caption("☁️ 클라우드 저장 연결됨 — 추가/삭제가 자동 알림에도 반영돼요." if _gh_token
+               else "💾 로컬 저장만 가능 (클라우드 반영은 GH_TOKEN 설정 시).")
     if st.button("💾 워치리스트 저장", type="primary"):
-        save_json(WATCHLIST_FILE, edited.fillna("").to_dict("records"))
-        st.success("저장 완료!")
+        recs = edited.fillna("").to_dict("records")
+        save_json(WATCHLIST_FILE, recs)
+        ok, info = save_json_cloud("data/watchlist.json", recs, "워치리스트 업데이트 (대시보드)")
+        if ok:
+            st.success("저장 완료! ☁️ 클라우드에 반영됨 (앱이 잠시 새로고침될 수 있어요)")
+        elif info == "no-token":
+            st.success("저장 완료! (로컬)")
+        else:
+            st.warning(f"로컬 저장됨. 단, 클라우드 반영 실패: {info}")
 
     if edited.empty:
         st.info("관심종목을 추가해 주세요.")
