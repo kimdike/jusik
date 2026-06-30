@@ -1,0 +1,358 @@
+<title>주식·자산 대시보드 사용 가이드</title>
+<meta name="description" content="한국주식·미국주식·코인을 한 곳에서 — 대시보드 10개 메뉴 사용법, 자동 알림, 핵심 용어를 정리한 사용 가이드.">
+
+<style>
+  :root {
+    --ground: #F5F7FB;
+    --ink: #0F172A;
+    --muted: #64748B;
+    --faint: #94A3B8;
+    --line: #E3E8EF;
+    --card: #FFFFFF;
+    --accent: #2563EB;
+    --accent-soft: #EAF0FE;
+    --up: #E53935;
+    --down: #2563EB;
+    --warn-bg: #FEF6E7;
+    --warn-line: #F5D78E;
+    --warn-ink: #92600A;
+    --radius: 14px;
+    --maxw: 840px;
+    --sans: "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Malgun Gothic",
+            -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+    --mono: "SF Mono", ui-monospace, "Cascadia Mono", "Segoe UI Mono", Menlo, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    line-height: 1.7;
+    font-size: 16px;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 20px 96px; }
+
+  /* ── 헤더 ── */
+  header.hero {
+    padding: 56px 0 28px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 8px;
+  }
+  .kicker {
+    font-size: 12px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(30px, 6vw, 44px); line-height: 1.12; font-weight: 800;
+    letter-spacing: -0.022em; margin: 0 0 14px; text-wrap: balance; color: var(--ink);
+  }
+  .lede { font-size: 18px; color: var(--muted); max-width: 60ch; margin: 0; line-height: 1.65; }
+
+  .disclaimer {
+    margin-top: 22px; display: flex; gap: 12px; align-items: flex-start;
+    background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: 12px;
+    padding: 14px 16px; color: var(--warn-ink); font-size: 14.5px; line-height: 1.6;
+  }
+  .disclaimer b { color: #7c4e06; }
+
+  /* ── 앵커 내비 ── */
+  nav.toc {
+    position: sticky; top: 0; z-index: 5;
+    display: flex; flex-wrap: wrap; gap: 8px;
+    padding: 14px 0; margin-bottom: 18px;
+    background: color-mix(in srgb, var(--ground) 88%, transparent);
+    backdrop-filter: blur(8px); border-bottom: 1px solid var(--line);
+  }
+  nav.toc a {
+    font-size: 13px; font-weight: 600; color: var(--muted); text-decoration: none;
+    padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--card);
+    transition: all .12s ease;
+  }
+  nav.toc a:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* ── 섹션 ── */
+  section { padding-top: 40px; }
+  h2 {
+    font-size: 23px; font-weight: 800; letter-spacing: -0.015em; margin: 0 0 6px;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  h2 .num {
+    font-family: var(--mono); font-size: 13px; font-weight: 700; color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+  .sec-sub { color: var(--muted); margin: 0 0 20px; font-size: 15px; }
+
+  p { margin: 0 0 14px; }
+
+  /* ── 시작 3단계 ── */
+  .steps { display: grid; gap: 14px; counter-reset: step; }
+  @media (min-width: 640px) { .steps { grid-template-columns: repeat(3, 1fr); } }
+  .step {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 18px 18px 20px; position: relative;
+  }
+  .step .n {
+    width: 28px; height: 28px; border-radius: 8px; background: var(--accent-soft);
+    color: var(--accent); font-weight: 800; font-size: 15px;
+    display: grid; place-items: center; margin-bottom: 12px; font-variant-numeric: tabular-nums;
+  }
+  .step h3 { font-size: 16px; font-weight: 700; margin: 0 0 6px; }
+  .step p { font-size: 14px; color: var(--muted); margin: 0; line-height: 1.6; }
+
+  /* ── 메뉴 카드 ── */
+  .menus { display: grid; gap: 12px; }
+  @media (min-width: 680px) { .menus { grid-template-columns: 1fr 1fr; } }
+  .menu {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    border-left: 4px solid var(--mc, var(--accent)); padding: 16px 18px;
+  }
+  .menu .name { font-weight: 700; font-size: 16px; margin: 0 0 5px; color: var(--ink); }
+  .menu .desc { font-size: 14px; color: var(--muted); margin: 0; line-height: 1.62; }
+  .menu .desc b { color: var(--ink); font-weight: 600; }
+
+  /* ── 알림 흐름 ── */
+  .flow {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 18px 20px; margin-bottom: 16px;
+  }
+  .flow .row { display: flex; gap: 12px; align-items: flex-start; padding: 9px 0; }
+  .flow .row + .row { border-top: 1px dashed var(--line); }
+  .flow .ico { font-size: 18px; flex: 0 0 auto; width: 26px; text-align: center; }
+  .flow .row .t { font-size: 14.5px; }
+  .flow .row .t b { font-weight: 700; }
+  .flow .row .t span { color: var(--muted); }
+
+  .callout {
+    background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 22%, white);
+    border-radius: 12px; padding: 14px 16px; font-size: 14.5px; color: #1e40af; line-height: 1.6;
+    margin-bottom: 14px;
+  }
+
+  /* ── 용어 정의 ── */
+  .terms { display: grid; gap: 0; border: 1px solid var(--line); border-radius: var(--radius);
+           overflow: hidden; background: var(--card); }
+  .term { padding: 16px 18px; }
+  .term + .term { border-top: 1px solid var(--line); }
+  .term dt { font-weight: 700; font-size: 15.5px; margin: 0 0 5px; color: var(--ink); }
+  .term dd { margin: 0; font-size: 14.5px; color: var(--muted); line-height: 1.65; }
+  .term dd code {
+    font-family: var(--mono); font-size: 12.5px; background: #F1F5F9; color: #334155;
+    padding: 1px 6px; border-radius: 5px;
+  }
+  .up { color: var(--up); font-weight: 600; }
+  .down { color: var(--down); font-weight: 600; }
+
+  /* ── 지표 표 ── */
+  .ind-table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+  table.ind { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--card); }
+  table.ind th, table.ind td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--line); }
+  table.ind th { background: #F8FAFC; font-weight: 700; color: var(--muted); font-size: 12.5px;
+                 letter-spacing: .03em; text-transform: uppercase; white-space: nowrap; }
+  table.ind tr:last-child td { border-bottom: none; }
+  table.ind td:first-child { font-weight: 700; white-space: nowrap; }
+
+  footer {
+    margin-top: 52px; padding-top: 22px; border-top: 1px solid var(--line);
+    color: var(--faint); font-size: 13px; line-height: 1.7;
+  }
+  footer b { color: var(--muted); }
+
+  a { color: var(--accent); }
+  a:focus-visible, nav.toc a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+
+<div class="wrap">
+
+  <header class="hero">
+    <p class="kicker">사용 가이드</p>
+    <h1>한 곳에서 보는<br>주식·자산 대시보드</h1>
+    <p class="lede">한국주식 · 미국주식 · 코인의 <b style="color:var(--ink)">현재 기술적 위치 · 전문가 목표가 괴리 · 관련 뉴스</b>를
+      초보자도 5초에 이해하도록 정리해주는 개인용 투자 보조 도구입니다.</p>
+    <div class="disclaimer">
+      <span style="font-size:18px;line-height:1.3">⚠️</span>
+      <div><b>예측기가 아닙니다.</b> 매수·매도를 권하지 않으며, 모든 수치는 투자 판단을 돕는 참고 정보입니다.
+        수익을 보장하지 않고, 최종 판단과 책임은 본인에게 있습니다.</div>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <a href="#start">시작하기</a>
+    <a href="#menus">메뉴 10개</a>
+    <a href="#alerts">자동 알림</a>
+    <a href="#mobile">폰에서 쓰기</a>
+    <a href="#terms">핵심 용어</a>
+    <a href="#data">데이터·면책</a>
+  </nav>
+
+  <section id="start">
+    <h2><span class="num">01</span> 3단계로 시작하기</h2>
+    <p class="sec-sub">처음이라면 이 순서대로만 보면 됩니다.</p>
+    <div class="steps">
+      <div class="step">
+        <div class="n">1</div>
+        <h3>종목 고르기</h3>
+        <p>‘기술적 분석’에서 검색창에 <b>이름</b>을 입력. 한국주식은 한글(삼성전자), 미국주식은 영문·한글(apple·테슬라), 코인은 한글·영문(비트코인). 결과는 거래대금 큰 순으로 정렬돼요.</p>
+      </div>
+      <div class="step">
+        <div class="n">2</div>
+        <h3>결론 3카드 먼저</h3>
+        <p>맨 위 <b>현재 상태 · 진입 매력도 · 위험도</b> 카드만 봐도 5초에 감이 와요. 신호등 색(🟢좋음 🟡보통 🟠주의 🔴위험)으로 표시됩니다.</p>
+      </div>
+      <div class="step">
+        <div class="n">3</div>
+        <h3>궁금하면 아래로</h3>
+        <p>차트 → 종합 총평 → 전문가 의견 → 지지/저항 → 뉴스 순으로 근거가 이어져요. 표·상세는 접이식이라 필요할 때만 펼치면 돼요.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="menus">
+    <h2><span class="num">02</span> 메뉴 10개</h2>
+    <p class="sec-sub">사이드바에서 메뉴 9개 + ‘사용 가이드’ 버튼으로 이동합니다.</p>
+    <div class="menus">
+      <div class="menu" style="--mc:#2563EB">
+        <p class="name">📊 기술적 분석 <span style="font-size:12px;color:var(--accent);font-weight:600">· 핵심</span></p>
+        <p class="desc">한 종목을 깊게. <b>결론 3카드 → 차트(이동평균·일목·지지저항) → 지표 요약 → 종합 총평 → 전문가 목표가 괴리 → 지지/저항 → 긍정·부정 신호 → 뉴스</b>.</p>
+      </div>
+      <div class="menu" style="--mc:#7C3AED">
+        <p class="name">🔭 스캐너</p>
+        <p class="desc">워치리스트·보유 종목의 종합 신호를 <b>한 번에 계산해 강한 순으로 랭킹</b>. ‘상승 우세만’ 필터로 지금 주목할 종목을 빠르게.</p>
+      </div>
+      <div class="menu" style="--mc:#0D9488">
+        <p class="name">🔎 발굴</p>
+        <p class="desc">주요 종목을 매일 밤 자동 스캔해 <b>가치(저PER·저PBR·배당·52주 저점) + 타이밍(우상향 속 눌림목)</b> 기준 매수 후보를 추려줘요. 워치리스트 밖에서 새 종목 찾기.</p>
+      </div>
+      <div class="menu" style="--mc:#0891B2">
+        <p class="name">🧪 백테스트</p>
+        <p class="desc">‘이대로 과거에 매매했다면?’ 검증. <b>신호 전략</b>과 <b>눌림목 매수 전략</b>을 ‘그냥 보유’와 비교 — 수익률·승률·최대낙폭(MDD).</p>
+      </div>
+      <div class="menu" style="--mc:#9333EA">
+        <p class="name">⚖️ 비교</p>
+        <p class="desc">관심·보유 종목 <b>2~4개를 나란히</b> — 신호·수익률·지표와 정규화 차트(시작=100)로 어느 쪽이 강한지 한눈에.</p>
+      </div>
+      <div class="menu" style="--mc:#16A34A">
+        <p class="name">🌡️ 시장 개요</p>
+        <p class="desc">코스피·코스닥·S&amp;P500·나스닥·환율·VIX 등락률 + 코인 <b>공포·탐욕 지수</b> + 시장 거시 뉴스.</p>
+      </div>
+      <div class="menu" style="--mc:#CA8A04">
+        <p class="name">💰 내 자산</p>
+        <p class="desc">보유 종목·수량·매입가를 넣으면 <b>평가액·수익률·자산 비중</b>을 자동 계산. 미국주식은 원화로 환산돼요.</p>
+      </div>
+      <div class="menu" style="--mc:#EA580C">
+        <p class="name">⭐ 워치리스트</p>
+        <p class="desc">관심 종목을 이름으로 검색해 담아두고 현재가·신호를 모아 봐요. <b>폰에서 추가·삭제해도 영구 저장</b>(자동 알림에도 반영).</p>
+      </div>
+      <div class="menu" style="--mc:#DC2626">
+        <p class="name">🔔 알림 설정</p>
+        <p class="desc">종목별 <b>목표가·매수자리·손절가</b>를 현재가 옆에서 버튼(±%)으로 설정. 신호가 바뀌거나 가격에 닿으면 텔레그램으로 알림.</p>
+      </div>
+      <div class="menu" style="--mc:#475569">
+        <p class="name">📖 사용 가이드</p>
+        <p class="desc">바로 이 문서. 사이드바 버튼으로 언제든 열 수 있어요.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="alerts">
+    <h2><span class="num">03</span> 자동 알림 (텔레그램)</h2>
+    <p class="sec-sub">PC를 꺼도 클라우드 서버가 30분마다 점검해 변화가 생기면 텔레그램으로 보냅니다.</p>
+    <div class="flow">
+      <div class="row"><span class="ico">📈</span><span class="t"><b>신호 변화</b> — 종합 신호 밴드가 바뀔 때 <span>(예: 중립 → 상승 우세). 관련 뉴스 제목도 함께.</span></span></div>
+      <div class="row"><span class="ico">🎯</span><span class="t"><b>목표가 도달</b> — 설정한 목표가 <span>이상</span>으로 오를 때</span></div>
+      <div class="row"><span class="ico">🟢</span><span class="t"><b>매수 자리 도달</b> — 설정한 진입가 <span>이하</span>로 내려올 때 (눌림목 매수 관심)</span></div>
+      <div class="row"><span class="ico">🛑</span><span class="t"><b>손절가 이탈</b> — 설정한 손절가 <span>이하</span>로 빠질 때</span></div>
+    </div>
+    <div class="callout">알림에는 그 종목 <b>차트 이미지</b>(현재가·목표가·매수자리·지지·저항 선)와 <b>가격 정리</b>(현재가 아래로 진입 타점 요약)가 함께 옵니다. 또한 매일 평일 아침(한국시간 8시)에 워치리스트 전체를 신호 강한 순으로 정리한 <b>🌅 아침 브리핑</b>이 와요.</div>
+  </section>
+
+  <section id="mobile">
+    <h2><span class="num">04</span> 폰에서 쓰기</h2>
+    <p class="sec-sub">웹 주소라 PC를 꺼도 24시간 어디서나 접속됩니다.</p>
+    <div class="menus">
+      <div class="menu" style="--mc:#2563EB">
+        <p class="name">📱 홈 화면에 추가</p>
+        <p class="desc">브라우저에서 앱 주소를 연 뒤 <b>‘홈 화면에 추가’</b> → 아이콘이 생겨 진짜 앱처럼 한 번에 실행돼요.</p>
+      </div>
+      <div class="menu" style="--mc:#0891B2">
+        <p class="name">🛌 절전(잠자기)</p>
+        <p class="desc">한동안 접속이 없으면 앱이 잠들어요. 다시 열면 첫 로딩에 <b>30초~1분</b> ‘waking up…’ — 잠깐 기다리면 깨어납니다.</p>
+      </div>
+      <div class="menu" style="--mc:#DC2626">
+        <p class="name">🎯 목표가 폰에서 수정</p>
+        <p class="desc">‘알림 설정’에서 목표가·매수자리·손절가를 바꾸고 저장하면 <b>클라우드에 영구 반영</b> → 다음 점검부터 자동 알림에 적용돼요.</p>
+      </div>
+      <div class="menu" style="--mc:#CA8A04">
+        <p class="name">💾 알아둘 점</p>
+        <p class="desc">‘내 자산’의 보유 종목 입력은 클라우드에서 영구 저장되진 않아요(조회·분석은 정상). 자산 기록은 로컬 PC에서 관리하세요.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="terms">
+    <h2><span class="num">05</span> 핵심 용어</h2>
+    <p class="sec-sub">자주 나오는 표현만 짚으면 화면이 훨씬 잘 읽혀요.</p>
+    <dl class="terms">
+      <div class="term">
+        <dt>종합 신호 점수 (0~100)</dt>
+        <dd>지표 10여 개가 상승/하락에 투표한 결과를 종합한 값. <b>100=대부분 상승 신호, 50=반반, 0=대부분 하락 신호.</b> ‘오를 확률’이 아니라 <b>신호가 어느 쪽으로 쏠렸는지</b>를 나타냅니다.</dd>
+      </div>
+      <div class="term">
+        <dt>목표가 괴리율</dt>
+        <dd>증권사 <b>평균 목표가</b>가 현재가보다 얼마나 높은지(낮은지). <code>(평균 목표가 − 현재가) / 현재가</code>. <span class="up">+면 상승 여력</span>, <span class="down">−면 현재가가 목표가를 이미 넘음</span>(과열 가능성).</dd>
+      </div>
+      <div class="term">
+        <dt>지지선 / 저항선</dt>
+        <dd><b>지지</b>는 아래에서 받쳐줄 가능성이 있는 가격대(하락 위험 기준), <b>저항</b>은 위에서 누를 가능성이 있는 가격대(상승 여력 기준). 이동평균·볼린저·일목·피보나치·스윙 고저점 등 여러 근거 중 현재가에 가까운 것을 추립니다.</dd>
+      </div>
+      <div class="term">
+        <dt>매수 자리 (진입가)</dt>
+        <dd>현재가보다 <b>아래</b>의 ‘여기까지 내려오면 사고 싶은’ 가격. 이 가격에 닿으면 <span style="color:#0891B2;font-weight:600">🟢 매수 자리 알림</span>이 옵니다. 보통 지지선·눌림목 부근으로 잡아요.</dd>
+      </div>
+      <div class="term">
+        <dt>가치 점수 · 발굴</dt>
+        <dd>‘발굴’ 메뉴의 <b>저평가 정도(0~100)</b> — 저PER·저PBR·고배당·52주 저점일수록 높아요. 거기에 ‘우상향 추세 속 눌림목’ 조건까지 맞으면 <b>🎯 매수자리</b>로 표시됩니다. <em>한국주식은 PER/PBR 데이터가 비는 경우가 많아 배당·52주 위치 위주로 평가돼요.</em></dd>
+      </div>
+      <div class="term">
+        <dt>공포·탐욕 지수 (코인)</dt>
+        <dd>시장 심리를 0~100으로 본 지표. <b>0=극단적 공포(과매도), 100=극단적 탐욕(과열).</b> ‘시장 개요’에서 확인.</dd>
+      </div>
+    </dl>
+
+    <p class="sec-sub" style="margin:26px 0 12px;font-weight:700;color:var(--ink);font-size:16px">차트 지표 한눈에</p>
+    <div class="ind-table-wrap">
+      <table class="ind">
+        <thead><tr><th>지표</th><th>읽는 법</th></tr></thead>
+        <tbody>
+          <tr><td>RSI</td><td>0~100. 70 이상 과매수, 30 이하 과매도</td></tr>
+          <tr><td>MACD</td><td>단기·장기 평균 차이로 모멘텀 방향 (골든/데드 크로스)</td></tr>
+          <tr><td>이동평균</td><td>단기&gt;중기&gt;장기선이면 정배열 = 상승 흐름</td></tr>
+          <tr><td>일목균형표</td><td>현재가가 구름대 위면 강세, 아래면 약세</td></tr>
+          <tr><td>ADX</td><td>추세의 강도. 25 이상이면 추세가 뚜렷</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="data">
+    <h2><span class="num">06</span> 데이터 · 면책</h2>
+    <p class="sec-sub">모두 무료 공개 데이터로 동작합니다(API 키 불필요).</p>
+    <div class="terms">
+      <div class="term"><dt>데이터 출처</dt>
+        <dd>주식 시세·펀더멘털·전문가 의견 = <b>Yahoo Finance(yfinance)</b> · 코인 시세 = <b>업비트</b> · 뉴스 = <b>Google News</b> · 코인 공포·탐욕 = <b>alternative.me</b>.</dd></div>
+      <div class="term"><dt>업데이트</dt>
+        <dd>시세·신호는 접속 시마다 새로 계산(수 분 캐시). 자동 알림·발굴은 클라우드에서 주기적으로 갱신됩니다.</dd></div>
+    </div>
+    <footer>
+      <b>면책</b> · 이 대시보드의 모든 수치(종합 신호 점수, 가치 점수, 목표가 괴리, 지지/저항, 매수 자리 등)는
+      투자 판단을 돕는 <b>참고 정보</b>이며 미래 수익을 보장하지 않습니다. 기술적 지표는 보조 신호일 뿐,
+      과거 성과가 미래를 보장하지 않습니다. 모든 투자 판단과 책임은 본인에게 있습니다.
+    </footer>
+  </section>
+
+</div>
