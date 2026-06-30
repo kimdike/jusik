@@ -205,6 +205,7 @@ def run_backtest(
 
     return {
         "ok": True,
+        "strategy": "signal",
         "dates": dates[start:],
         "equity": strat_eq,
         "price": bh_eq,
@@ -213,4 +214,115 @@ def run_backtest(
         "trades": trades,
         "metrics": metrics,
         "params": {"buy_th": buy_th, "sell_th": sell_th, "fee_pct": fee_pct, "warmup": warmup},
+    }
+
+
+def run_dip_backtest(
+    df: pd.DataFrame,
+    dip_pct: float = 7.0,
+    take_pct: float = 10.0,
+    stop_pct: float = 7.0,
+    lookback: int = 20,
+    max_hold: int = 60,
+    fee_pct: float = 0.1,
+) -> dict:
+    """
+    눌림목(매수자리) 전략 백테스트.
+
+    규칙(롱 온리):
+      - 진입: 최근 lookback봉 고점 대비 dip_pct% 이상 하락하면(눌림목) 매수.
+      - 청산: 매수가 대비 +take_pct% 도달(익절) / -stop_pct% 이탈(손절) /
+              max_hold봉 경과(시간 청산) 중 먼저 오는 것.
+    "이 매수자리에 샀으면 수익률?"을 검증. 종가 기준 단순 시뮬레이션(참고용).
+    """
+    n = len(df)
+    warmup = lookback + 1
+    if df is None or n < warmup + 20:
+        return {"ok": False, "reason": f"데이터 부족 (최소 {warmup + 20}봉 필요, 현재 {n}봉)."}
+
+    close = df["close"].to_numpy(dtype=float)
+    roll_high = df["close"].rolling(lookback, min_periods=lookback).max().to_numpy(dtype=float)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        dd = np.where(roll_high > 0, (close / roll_high - 1) * 100, 0.0)  # 고점 대비 낙폭(%)
+
+    # 목표 포지션 결정 (종가 기준 → 다음 봉부터 반영)
+    desired = np.zeros(n, dtype=int)
+    pos, ep, ei = 0, None, None
+    for i in range(n):
+        if i < warmup:
+            continue
+        if pos == 0:
+            if not np.isnan(dd[i]) and dd[i] <= -dip_pct:
+                pos, ep, ei = 1, close[i], i
+        else:
+            ret = (close[i] / ep - 1) if ep else 0.0
+            if ret >= take_pct / 100 or ret <= -stop_pct / 100 or (i - ei) >= max_hold:
+                pos = 0
+        desired[i] = pos
+
+    # 자산곡선 + 거래 (run_backtest와 동일 방식)
+    fee = fee_pct / 100.0
+    equity = np.ones(n, dtype=float)
+    held = np.zeros(n, dtype=int)
+    trades: list[dict] = []
+    entry_price = entry_idx = None
+    for i in range(1, n):
+        h = desired[i - 1]
+        held[i] = h
+        bar_ret = (close[i] / close[i - 1] - 1) if close[i - 1] else 0.0
+        eq = equity[i - 1] * (1 + bar_ret * h)
+        changed = desired[i - 1] != desired[i - 2] if i >= 2 else desired[i - 1] != 0
+        if changed:
+            eq *= (1 - fee)
+        equity[i] = eq
+        prev2 = desired[i - 2] if i >= 2 else 0
+        if desired[i - 1] == 1 and prev2 == 0:
+            entry_price, entry_idx = close[i - 1], i - 1
+        elif desired[i - 1] == 0 and prev2 == 1 and entry_price is not None:
+            ex = close[i - 1]
+            net = (1 - fee) * (1 - fee) * (1 + (ex / entry_price - 1)) - 1
+            trades.append({"entry_date": df.index[entry_idx], "entry_price": float(entry_price),
+                           "exit_date": df.index[i - 1], "exit_price": float(ex),
+                           "ret_pct": float(net * 100), "bars": int((i - 1) - entry_idx)})
+            entry_price = entry_idx = None
+    if entry_price is not None:
+        ex = close[-1]
+        net = (1 - fee) * (1 - fee) * (1 + (ex / entry_price - 1)) - 1
+        trades.append({"entry_date": df.index[entry_idx], "entry_price": float(entry_price),
+                       "exit_date": df.index[-1], "exit_price": float(ex),
+                       "ret_pct": float(net * 100), "bars": int((n - 1) - entry_idx), "open": True})
+
+    start = warmup
+    base = close[start] if close[start] else close[0]
+    buyhold = close / base
+    eq_from_start = equity / equity[start] if equity[start] else equity
+    dates = df.index
+    strat_eq = eq_from_start[start:]
+    bh_eq = buyhold[start:]
+    n_trades = len(trades)
+    wins = [t for t in trades if t["ret_pct"] > 0]
+    metrics = {
+        "strategy_return": float((strat_eq[-1] - 1) * 100),
+        "buyhold_return": float((bh_eq[-1] - 1) * 100),
+        "n_trades": n_trades,
+        "win_rate": (len(wins) / n_trades * 100) if n_trades else None,
+        "strategy_mdd": _max_drawdown(strat_eq),
+        "buyhold_mdd": _max_drawdown(bh_eq),
+        "strategy_cagr": _cagr(strat_eq, dates[start:]),
+        "buyhold_cagr": _cagr(bh_eq, dates[start:]),
+        "exposure": float(held[start:].mean() * 100) if n > start else 0.0,
+        "avg_hold_bars": float(np.mean([t["bars"] for t in trades])) if trades else None,
+    }
+    return {
+        "ok": True,
+        "strategy": "dip",
+        "dates": dates[start:],
+        "equity": strat_eq,
+        "price": bh_eq,
+        "position": held[start:],
+        "dd": dd[start:],
+        "trades": trades,
+        "metrics": metrics,
+        "params": {"dip_pct": dip_pct, "take_pct": take_pct, "stop_pct": stop_pct,
+                   "lookback": lookback, "max_hold": max_hold, "fee_pct": fee_pct},
     }

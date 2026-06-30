@@ -285,6 +285,16 @@ def run_backtest_cached(symbol: str, market: str, period: str,
                                warmup=warmup, fee_pct=fee_pct, step=step)
 
 
+@st.cache_data(ttl=600, show_spinner=False)
+def run_dip_backtest_cached(symbol: str, market: str, period: str,
+                            dip_pct: float, take_pct: float, stop_pct: float) -> dict:
+    """눌림목(매수자리) 전략 백테스트 — OHLCV 페치 후 실행, 결과 캐시."""
+    df = prices.get_ohlcv(symbol, market, period)
+    if df is None or df.empty:
+        return {"ok": False, "reason": "데이터를 불러오지 못했어요. 심볼/시장/기간을 확인해 주세요."}
+    return bt_mod.run_dip_backtest(df, dip_pct=dip_pct, take_pct=take_pct, stop_pct=stop_pct)
+
+
 def render_news(items: list, empty_msg: str) -> None:
     """뉴스 목록 안전 렌더링 (외부 제목/링크 이스케이프 + 링크 스킴 검증)."""
     if not items:
@@ -1278,23 +1288,33 @@ def make_backtest_chart(res: dict, dispname: str) -> go.Figure:
     """자산곡선(전략 vs 보유) + 종합신호 점수 2단 차트."""
     dates = res["dates"]
     p = res["params"]
+    is_dip = res.get("strategy") == "dip"
+    strat_name = "눌림목 전략" if is_dip else "신호 전략"
+    row2_title = "고점 대비 낙폭(%) · 진입 기준선" if is_dip else "종합 신호 점수"
     fig = make_subplots(
         rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.06,
         row_heights=[0.68, 0.32],
-        subplot_titles=("자산곡선 — 신호 전략 vs 그냥 보유 (시작=100)", "종합 신호 점수"),
+        subplot_titles=(f"자산곡선 — {strat_name} vs 그냥 보유 (시작=100)", row2_title),
     )
-    fig.add_trace(go.Scatter(x=dates, y=res["equity"] * 100, name="신호 전략",
+    fig.add_trace(go.Scatter(x=dates, y=res["equity"] * 100, name=strat_name,
                              line=dict(color="#2563EB", width=2)), row=1, col=1)
     fig.add_trace(go.Scatter(x=dates, y=res["price"] * 100, name="그냥 보유(Buy&Hold)",
                              line=dict(color="#9CA3AF", width=1.6, dash="dot")), row=1, col=1)
     fig.add_hline(y=100, line_dash="dot", line_color="#D1D5DB", row=1, col=1)
 
-    fig.add_trace(go.Scatter(x=dates, y=res["signal"], name="종합 신호",
-                             line=dict(color="#8e44ad", width=1.2)), row=2, col=1)
-    fig.add_hline(y=p["buy_th"], line_dash="dash", line_color="rgba(229,57,53,0.6)",
-                  annotation_text=f"매수 {p['buy_th']:.0f}", annotation_position="right", row=2, col=1)
-    fig.add_hline(y=p["sell_th"], line_dash="dash", line_color="rgba(37,99,235,0.6)",
-                  annotation_text=f"청산 {p['sell_th']:.0f}", annotation_position="right", row=2, col=1)
+    if is_dip:
+        fig.add_trace(go.Scatter(x=dates, y=res["dd"], name="고점대비 낙폭",
+                                 line=dict(color="#8e44ad", width=1.2)), row=2, col=1)
+        fig.add_hline(y=-p["dip_pct"], line_dash="dash", line_color="rgba(229,57,53,0.6)",
+                      annotation_text=f"매수 -{p['dip_pct']:.0f}%", annotation_position="right", row=2, col=1)
+        fig.add_hline(y=0, line_dash="dot", line_color="#D1D5DB", row=2, col=1)
+    else:
+        fig.add_trace(go.Scatter(x=dates, y=res["signal"], name="종합 신호",
+                                 line=dict(color="#8e44ad", width=1.2)), row=2, col=1)
+        fig.add_hline(y=p["buy_th"], line_dash="dash", line_color="rgba(229,57,53,0.6)",
+                      annotation_text=f"매수 {p['buy_th']:.0f}", annotation_position="right", row=2, col=1)
+        fig.add_hline(y=p["sell_th"], line_dash="dash", line_color="rgba(37,99,235,0.6)",
+                      annotation_text=f"청산 {p['sell_th']:.0f}", annotation_position="right", row=2, col=1)
     fig.update_layout(
         height=560, hovermode="x unified", dragmode="pan",
         legend=dict(orientation="h", yanchor="top", y=-0.08, xanchor="left", x=0,
@@ -1311,22 +1331,28 @@ def page_backtest():
 
     symbol, market, dispname = symbol_picker("bt")
 
-    c1, c2, c3, c4 = st.columns([1.3, 1, 1, 1])
-    with c1:
-        period_label = st.selectbox("검증 기간", ["1년", "2년", "5년"], index=1)
-        period = {"1년": "1y", "2년": "2y", "5년": "5y"}[period_label]
-    with c2:
-        buy_th = st.slider("매수 기준", 50, 80, 60, step=5,
-                           help="종합 신호 점수가 이 값 이상이면 매수 진입")
-    with c3:
-        sell_th = st.slider("청산 기준", 30, 50, 45, step=5,
-                            help="종합 신호 점수가 이 값 이하이면 청산")
-    with c4:
-        fee = st.slider("거래비용(편도 %)", 0.0, 0.5, 0.1, step=0.05,
-                        help="수수료+슬리피지 가정. 진입·청산마다 차감")
+    strat = st.radio("전략", ["📊 신호 전략", "📉 눌림목 매수 전략"], horizontal=True,
+                     help="신호: 종합신호 점수로 매매 / 눌림목: 고점 대비 하락 시 매수 → 익절·손절")
+    period_label = st.selectbox("검증 기간", ["1년", "2년", "5년"], index=1)
+    period = {"1년": "1y", "2년": "2y", "5년": "5y"}[period_label]
+    is_dip = strat.startswith("📉")
+    strat_label = "눌림목 전략" if is_dip else "신호 전략"
 
-    with st.spinner("과거 데이터로 시뮬레이션 중... (기간이 길면 수십 초 걸릴 수 있어요)"):
-        res = run_backtest_cached(symbol, market, period, float(buy_th), float(sell_th), float(fee))
+    if is_dip:
+        c1, c2, c3 = st.columns(3)
+        dip = c1.slider("눌림목 깊이 (고점대비 −%)", 3, 20, 7, step=1,
+                        help="최근 20봉 고점 대비 이만큼 하락하면 매수")
+        take = c2.slider("익절 (+%)", 3, 30, 10, step=1, help="매수가 대비 이만큼 오르면 청산")
+        stop = c3.slider("손절 (−%)", 3, 20, 7, step=1, help="매수가 대비 이만큼 빠지면 청산")
+        with st.spinner("과거 데이터로 시뮬레이션 중..."):
+            res = run_dip_backtest_cached(symbol, market, period, float(dip), float(take), float(stop))
+    else:
+        c1, c2, c3 = st.columns(3)
+        buy_th = c1.slider("매수 기준", 50, 80, 60, step=5, help="종합 신호 점수가 이 값 이상이면 매수")
+        sell_th = c2.slider("청산 기준", 30, 50, 45, step=5, help="종합 신호 점수가 이 값 이하이면 청산")
+        fee = c3.slider("거래비용(편도 %)", 0.0, 0.5, 0.1, step=0.05, help="수수료+슬리피지 가정")
+        with st.spinner("과거 데이터로 시뮬레이션 중... (기간이 길면 수십 초 걸릴 수 있어요)"):
+            res = run_backtest_cached(symbol, market, period, float(buy_th), float(sell_th), float(fee))
 
     if not res.get("ok"):
         st.warning(res.get("reason", "백테스트를 실행할 수 없어요."))
@@ -1345,7 +1371,7 @@ def page_backtest():
     with cc[0]:
         st.markdown(
             f'<div class="card" style="border-top:4px solid #2563EB">'
-            f'<div class="lbl">신호 전략 수익률</div>'
+            f'<div class="lbl">{strat_label} 수익률</div>'
             f'<div class="val {_chg_cls(m["strategy_return"])}">{m["strategy_return"]:+.1f}%</div>'
             f'<div class="sub">최대낙폭(MDD) {m["strategy_mdd"]:.1f}% · '
             f'노출도 {m["exposure"]:.0f}%</div></div>', unsafe_allow_html=True)
@@ -1357,9 +1383,9 @@ def page_backtest():
             f'<div class="sub">최대낙폭(MDD) {m["buyhold_mdd"]:.1f}%</div></div>',
             unsafe_allow_html=True)
 
-    verdict = (f"신호 전략이 그냥 보유보다 <b>{diff:+.1f}%p</b> "
+    verdict = (f"{strat_label}이 그냥 보유보다 <b>{diff:+.1f}%p</b> "
                f"{'앞섰습니다 👍' if won else '뒤졌습니다'}.")
-    sub = ("이 종목·기간에선 신호 매매가 더 나았어요. 다만 표본이 한정적이라 맹신은 금물."
+    sub = ("이 종목·기간에선 이 전략이 더 나았어요. 다만 표본이 한정적이라 맹신은 금물."
            if won else
            "이 종목·기간에선 그냥 들고 있는 게 더 나았어요. 추세장에선 흔한 결과예요.")
     box_color = "#16A34A" if won else "#B45309"
