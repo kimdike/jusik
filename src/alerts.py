@@ -95,6 +95,7 @@ def run_once(send_telegram: bool = True) -> list[str]:
         prev = state.get(k, {})
         first_seen = not prev
         cur_msgs: list[str] = []  # 이 종목에서 이번에 발생한 알림들
+        sig_changed = False
 
         # --- A1: 신호 변화 ---
         signal_on = cfg.get("signal_alert", True)  # 기본 켜짐
@@ -103,6 +104,7 @@ def run_once(send_telegram: bool = True) -> list[str]:
             if prev_band and prev_band != band_key and band_key != "none":
                 _, prev_label = band_of_label(prev_band)
                 arrow = "📈" if _band_rank(band_key) > _band_rank(prev_band) else "📉"
+                sig_changed = True
                 cur_msgs.append(
                     f"{arrow} [신호 변화] {name} ({sym})\n"
                     f"{prev_label} → {band_label} (상승우세 {res['up_pct']:.0f}%)\n"
@@ -138,6 +140,10 @@ def run_once(send_telegram: bool = True) -> list[str]:
             if send_telegram:
                 # 종목별 차트 + 가격 정리(현재가 아래 진입타점)를 캡션에 붙여 발송
                 caption = "\n\n".join(cur_msgs) + "\n\n" + _price_brief(mkt, df, cfg)
+                if sig_changed:  # 신호 변화 알림엔 관련 뉴스도 첨부
+                    nb = _news_brief(name, mkt)
+                    if nb:
+                        caption += "\n\n" + nb
                 _send_with_chart(sym, mkt, name, df, cfg, caption)
 
     _save(STATE_FILE, state)
@@ -177,6 +183,24 @@ def _price_brief(mkt: str, df, cfg: dict) -> str:
     except Exception:
         pass
     return "\n".join(lines)
+
+
+def _news_brief(name: str, mkt: str) -> str:
+    """신호 변화 알림에 붙일 관련 뉴스 1~2건(제목+링크). 실패 시 빈 문자열."""
+    try:
+        from . import news as news_mod
+        region = "US" if mkt.upper() == "US" else "KR"
+        items = news_mod.get_news(name, region=region, limit=2)
+        if not items:
+            return ""
+        lines = ["📰 관련 뉴스 (자세히는 대시보드 관련뉴스)"]
+        for n in items[:2]:
+            title = (n.get("title") or "").strip()
+            if title:
+                lines.append(f"• {title}")
+        return "\n".join(lines) if len(lines) > 1 else ""
+    except Exception:
+        return ""
 
 
 def _send_with_chart(sym: str, mkt: str, name: str, df, cfg: dict, caption: str) -> None:
