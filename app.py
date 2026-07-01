@@ -430,7 +430,8 @@ CHART_CONFIG = {
 
 
 def make_chart(df: pd.DataFrame, all_ind: dict, title: str, levels: dict | None = None,
-               channel: dict | None = None, touch: dict | None = None) -> go.Figure:
+               channel: dict | None = None, touch: dict | None = None,
+               long_ma: tuple | None = None) -> go.Figure:
     fig = make_subplots(
         rows=3,
         cols=1,
@@ -457,6 +458,15 @@ def make_chart(df: pd.DataFrame, all_ind: dict, title: str, levels: dict | None 
                        line=dict(width=1, color=color)),
             row=1, col=1,
         )
+    # 장기 이평선 (예: 200주선) — 두꺼운 빨강
+    if long_ma is not None:
+        _ma_s, _ma_lbl = long_ma
+        fig.add_trace(
+            go.Scatter(x=df.index, y=_ma_s, name=_ma_lbl,
+                       line=dict(width=2.2, color="#d63031")),
+            row=1, col=1,
+        )
+
     # 일목균형표 구름대
     ichi = all_ind["ichimoku"]
     fig.add_trace(
@@ -730,17 +740,21 @@ def page_analysis():
     if df.empty:
         st.error(f"'{symbol}' ({market}) 데이터를 불러오지 못했어요. 심볼/시장을 확인해 주세요.")
         return
-    # 주/월봉은 너무 긴 과거를 잘라 최근 흐름 위주로 (채널·표시 안정)
-    if timeframe == "W":
-        df = df.tail(200)
-    elif timeframe == "M":
-        df = df.tail(120)
+    # 월봉은 너무 긴 과거만 잘라 표시 안정화 (주봉은 200주선 계산 위해 전체 유지)
+    if timeframe == "M":
+        df = df.tail(240)
 
     all_ind = ind.compute_all(df)
     result = signals.evaluate(df)
     levels = lv_mod.compute_levels(df, all_ind)
     touch = lt_mod.touch_levels(df)
     channel = lt_mod.regression_channel(df) if show_channel else None
+    # 장기 이평선 (일봉=200일선, 주봉=200주선) — 데이터 충분할 때만
+    long_ma = None
+    if timeframe in ("D", "W"):
+        _s = ind.sma(df["close"], 200)
+        if int(_s.notna().sum()) >= 10:
+            long_ma = (_s, "200주선" if timeframe == "W" else "200일선")
     cur = float(df["close"].iloc[-1])
     fund = fetch_fundamentals(symbol, market) if market != "COIN" else {}
 
@@ -802,7 +816,7 @@ def page_analysis():
     st.write("")
     # 메인 차트 (화면 중심) — 터치 기반 지지/저항 + (옵션) 평행 채널
     st.plotly_chart(make_chart(df, all_ind, f"{dispname} ({symbol}) · {tf_label}",
-                               levels, channel=channel, touch=touch),
+                               levels, channel=channel, touch=touch, long_ma=long_ma),
                     use_container_width=True, config=CHART_CONFIG)
     if channel:
         pos = channel["position"]

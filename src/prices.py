@@ -63,14 +63,27 @@ def _coin_market(symbol: str) -> str:
 def _upbit_ohlcv(symbol: str, count: int = 200, unit: str = "days") -> pd.DataFrame:
     market = _coin_market(symbol)
     url = f"{UPBIT_BASE}/candles/{unit}"  # days / weeks / months
-    resp = requests.get(
-        url, params={"market": market, "count": min(count, 200)}, timeout=_TIMEOUT
-    )
-    resp.raise_for_status()
-    data = resp.json()
-    if not isinstance(data, list) or not data:
+    # 업비트는 요청당 최대 200봉 → count가 크면 'to'로 과거를 페이지네이션(예: 200주선용 400봉)
+    rows: list = []
+    to = None
+    need = count
+    for _ in range(6):  # 최대 6페이지(1200봉) 안전상한
+        params = {"market": market, "count": min(need, 200)}
+        if to:
+            params["to"] = to
+        resp = requests.get(url, params=params, timeout=_TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        if not isinstance(data, list) or not data:
+            break
+        rows.extend(data)
+        need -= len(data)
+        if need <= 0 or len(data) < 200:
+            break
+        to = data[-1]["candle_date_time_utc"]  # 이 시각 이전을 다음 페이지로
+    if not rows:
         return pd.DataFrame()
-    df = pd.DataFrame(data)
+    df = pd.DataFrame(rows).drop_duplicates(subset=["candle_date_time_kst"])
     df["date"] = pd.to_datetime(df["candle_date_time_kst"])
     df = df.rename(
         columns={
@@ -95,10 +108,12 @@ def get_ohlcv(symbol: str, market: str, period: str = "1y", timeframe: str = "D"
     try:
         if market == "COIN":
             unit = {"D": "days", "W": "weeks", "M": "months"}.get(tf, "days")
-            return _upbit_ohlcv(symbol, count=200, unit=unit)
+            # 주봉은 200주선 계산 위해 더 받음(페이지네이션)
+            cnt = {"D": 200, "W": 420, "M": 200}.get(tf, 200)
+            return _upbit_ohlcv(symbol, count=cnt, unit=unit)
         interval = {"D": "1d", "W": "1wk", "M": "1mo"}.get(tf, "1d")
-        # 주/월봉은 더 긴 기간이 필요
-        per = period if tf == "D" else ("5y" if tf == "W" else "max")
+        # 주/월봉은 더 긴 기간이 필요 (200주선 확보 위해 주봉은 10년)
+        per = period if tf == "D" else ("10y" if tf == "W" else "max")
         tickers = _kr_candidates(symbol) if market == "KR" else [symbol.strip().upper()]
         for cand in tickers:
             df = _normalize_yf(
