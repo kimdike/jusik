@@ -20,6 +20,7 @@ from src import gitstore
 from src import glossary
 from src import indicators as ind
 from src import levels as lv_mod
+from src import levels_touch as lt_mod
 from src import market as market_mod
 from src import news as news_mod
 from src import notify
@@ -209,8 +210,8 @@ def set_price_pct(state_key: str, base: float | None, pct: float, market: str) -
 # 데이터 (캐시)
 # ---------------------------------------------------------------------------
 @st.cache_data(ttl=300, show_spinner=False)
-def fetch_ohlcv(symbol: str, market: str, period: str) -> pd.DataFrame:
-    return prices.get_ohlcv(symbol, market, period)
+def fetch_ohlcv(symbol: str, market: str, period: str, timeframe: str = "D") -> pd.DataFrame:
+    return prices.get_ohlcv(symbol, market, period, timeframe=timeframe)
 
 
 @st.cache_data(ttl=120, show_spinner=False)
@@ -428,7 +429,8 @@ CHART_CONFIG = {
 }
 
 
-def make_chart(df: pd.DataFrame, all_ind: dict, title: str, levels: dict | None = None) -> go.Figure:
+def make_chart(df: pd.DataFrame, all_ind: dict, title: str, levels: dict | None = None,
+               channel: dict | None = None, touch: dict | None = None) -> go.Figure:
     fig = make_subplots(
         rows=3,
         cols=1,
@@ -488,8 +490,39 @@ def make_chart(df: pd.DataFrame, all_ind: dict, title: str, levels: dict | None 
     fig.add_trace(go.Scatter(x=df.index, y=macd_df["signal"], name="시그널", showlegend=False,
                              line=dict(color="#e67e22")), row=3, col=1)
 
-    # 지지/저항 수평선 (가까운 것 위주)
-    if levels:
+    # 평행 채널 (로그 회귀) — 큰 그림 추세
+    if channel:
+        fig.add_trace(go.Scatter(x=df.index, y=channel["upper"], name="채널 상단", showlegend=False,
+                                 line=dict(width=1, color="rgba(231,76,60,0.65)")), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=channel["mid"], name="채널 중심", showlegend=False,
+                                 line=dict(width=0.8, color="rgba(37,99,235,0.55)", dash="dash")), row=1, col=1)
+        fig.add_trace(go.Scatter(x=df.index, y=channel["lower"], name="채널 하단", showlegend=False,
+                                 line=dict(width=1, color="rgba(22,160,133,0.65)")), row=1, col=1)
+
+    # 지지/저항 — 터치 기반(실제 반응 자리) 우선, 없으면 기존 지표 기반 levels
+    if touch and (touch.get("resistances") or touch.get("supports")):
+        for r in touch.get("resistances", []):
+            fig.add_hline(y=r["price"], line_dash="dash", line_color="rgba(192,57,43,0.7)",
+                          annotation_text=f"저항 {r['price']:,.0f} ({r['touches']}번)",
+                          annotation_position="right", row=1, col=1)
+        for s in touch.get("supports", []):
+            fig.add_hline(y=s["price"], line_dash="dash", line_color="rgba(22,160,133,0.75)",
+                          annotation_text=f"지지 {s['price']:,.0f} ({s['touches']}번)",
+                          annotation_position="right", row=1, col=1)
+        # 실제 반응한 지점(피벗)을 점으로 — 눈에 보이는 근거
+        for items, mcol in [(touch.get("resistances", []), "#c0392b"),
+                            (touch.get("supports", []), "#16a085")]:
+            xs, ys = [], []
+            for it in items:
+                for pos in it.get("members", []):
+                    if 0 <= pos < len(df):
+                        xs.append(df.index[pos]); ys.append(it["price"])
+            if xs:
+                fig.add_trace(go.Scatter(x=xs, y=ys, mode="markers", showlegend=False,
+                                         marker=dict(size=6, color=mcol,
+                                                     line=dict(width=1, color="white"))),
+                              row=1, col=1)
+    elif levels:
         for s in levels.get("resistances", [])[:2]:
             fig.add_hline(y=s["price"], line_dash="dash", line_color="rgba(192,57,43,0.6)",
                           annotation_text=f"저항 {s['price']:,.0f}", annotation_position="right",
@@ -676,17 +709,38 @@ def page_analysis():
     elif quick != "— 선택 안 함 —":
         symbol, market, dispname = options[quick]
 
-    period_label = st.radio("기간", list(PERIOD_OPTIONS.keys()), index=1, horizontal=True)
-    period = PERIOD_OPTIONS[period_label]
+    tcol, pcol, ocol = st.columns([1.2, 2, 1.4])
+    with tcol:
+        tf_label = st.radio("봉", ["일봉", "주봉", "월봉"], index=0, horizontal=True,
+                            help="일봉=단기 매매자리 / 주봉·월봉=큰 그림 추세·채널")
+        timeframe = {"일봉": "D", "주봉": "W", "월봉": "M"}[tf_label]
+    with pcol:
+        if timeframe == "D":
+            period_label = st.radio("기간", list(PERIOD_OPTIONS.keys()), index=1, horizontal=True)
+            period = PERIOD_OPTIONS[period_label]
+        else:
+            period_label = tf_label
+            period = "1y"  # 주/월봉은 내부에서 더 긴 기간 자동 사용
+            st.caption("주봉/월봉은 자동으로 긴 기간을 씁니다.")
+    with ocol:
+        show_channel = st.checkbox("평행 채널", value=(timeframe != "D"),
+                                   help="로그 회귀 기반 장기 추세 채널")
 
-    df = fetch_ohlcv(symbol, market, period)
+    df = fetch_ohlcv(symbol, market, period, timeframe)
     if df.empty:
         st.error(f"'{symbol}' ({market}) 데이터를 불러오지 못했어요. 심볼/시장을 확인해 주세요.")
         return
+    # 주/월봉은 너무 긴 과거를 잘라 최근 흐름 위주로 (채널·표시 안정)
+    if timeframe == "W":
+        df = df.tail(200)
+    elif timeframe == "M":
+        df = df.tail(120)
 
     all_ind = ind.compute_all(df)
     result = signals.evaluate(df)
     levels = lv_mod.compute_levels(df, all_ind)
+    touch = lt_mod.touch_levels(df)
+    channel = lt_mod.regression_channel(df) if show_channel else None
     cur = float(df["close"].iloc[-1])
     fund = fetch_fundamentals(symbol, market) if market != "COIN" else {}
 
@@ -746,14 +800,18 @@ def page_analysis():
             st.markdown(card_html("종합 신호 점수", "-", val_sm=True), unsafe_allow_html=True)
 
     st.write("")
-    # 메인 차트 (화면 중심)
-    st.plotly_chart(make_chart(df, all_ind, f"{dispname} ({symbol})", levels),
+    # 메인 차트 (화면 중심) — 터치 기반 지지/저항 + (옵션) 평행 채널
+    st.plotly_chart(make_chart(df, all_ind, f"{dispname} ({symbol}) · {tf_label}",
+                               levels, channel=channel, touch=touch),
                     use_container_width=True, config=CHART_CONFIG)
-    cc1, cc2 = st.columns([1, 4])
-    with cc1:
-        st.button("차트 초기화", help="확대/이동한 차트를 원래대로 되돌립니다", use_container_width=True)
-    with cc2:
-        st.caption("차트 위 더블클릭=원상복구 · 휠=확대/축소 · 드래그=영역 확대 · 상단 버튼=기간 이동")
+    if channel:
+        pos = channel["position"]
+        loc = ("채널 상단(과열권)" if pos >= 80 else "채널 하단(저점권)" if pos <= 20
+               else "채널 중단")
+        st.caption(f"📐 평행 채널: 현재 **채널 내 위치 {pos:.0f}%** ({loc}) · {channel['trend']} 추세 "
+                   f"· 빨강=상단(과열) 초록=하단(저점권). 채널 안에서 위치가 낮을수록 상대적 저평가.")
+    st.caption("점(●)이 있는 지지/저항 = 과거 실제로 여러 번 반응한 자리(터치 횟수 표시)라 더 신뢰도가 높아요. "
+               "차트: 더블클릭=원상복구 · 휠=확대 · 드래그=영역확대")
 
     # 지표 요약 카드
     mini = indicator_mini_cards(result, all_ind)

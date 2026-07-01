@@ -60,9 +60,9 @@ def _coin_market(symbol: str) -> str:
     return f"KRW-{symbol}"
 
 
-def _upbit_ohlcv(symbol: str, count: int = 200) -> pd.DataFrame:
+def _upbit_ohlcv(symbol: str, count: int = 200, unit: str = "days") -> pd.DataFrame:
     market = _coin_market(symbol)
-    url = f"{UPBIT_BASE}/candles/days"
+    url = f"{UPBIT_BASE}/candles/{unit}"  # days / weeks / months
     resp = requests.get(
         url, params={"market": market, "count": min(count, 200)}, timeout=_TIMEOUT
     )
@@ -88,24 +88,25 @@ def _upbit_ohlcv(symbol: str, count: int = 200) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # 공개 API
 # ---------------------------------------------------------------------------
-def get_ohlcv(symbol: str, market: str, period: str = "1y") -> pd.DataFrame:
-    """시장별 OHLCV 수집. 실패 시 빈 DataFrame."""
+def get_ohlcv(symbol: str, market: str, period: str = "1y", timeframe: str = "D") -> pd.DataFrame:
+    """시장별 OHLCV 수집. timeframe: D(일봉)/W(주봉)/M(월봉). 실패 시 빈 DataFrame."""
     market = market.upper()
+    tf = str(timeframe).upper()
     try:
         if market == "COIN":
-            return _upbit_ohlcv(symbol)
-        if market == "KR":
-            for cand in _kr_candidates(symbol):
-                df = _normalize_yf(
-                    yf.Ticker(cand).history(period=period, auto_adjust=True)
-                )
-                if not df.empty:
-                    return df
-            return pd.DataFrame()
-        # US (기본)
-        return _normalize_yf(
-            yf.Ticker(symbol.strip().upper()).history(period=period, auto_adjust=True)
-        )
+            unit = {"D": "days", "W": "weeks", "M": "months"}.get(tf, "days")
+            return _upbit_ohlcv(symbol, count=200, unit=unit)
+        interval = {"D": "1d", "W": "1wk", "M": "1mo"}.get(tf, "1d")
+        # 주/월봉은 더 긴 기간이 필요
+        per = period if tf == "D" else ("5y" if tf == "W" else "max")
+        tickers = _kr_candidates(symbol) if market == "KR" else [symbol.strip().upper()]
+        for cand in tickers:
+            df = _normalize_yf(
+                yf.Ticker(cand).history(period=per, interval=interval, auto_adjust=True)
+            )
+            if not df.empty:
+                return df
+        return pd.DataFrame()
     except Exception:
         return pd.DataFrame()
 
