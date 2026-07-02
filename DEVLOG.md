@@ -49,6 +49,7 @@ jusik/
 ├─ .github/workflows/alerts.yml    # ⭐ 자동 알림: 30분 크론 → 텔레그램 (차트+가격정리+뉴스)
 ├─ .github/workflows/briefing.yml  # 🌅 아침 브리핑: KST 평일 08시 워치리스트 요약 발송
 ├─ .github/workflows/discovery.yml # 🔎 종목 발굴: 매일 밤 스캔→discovery.json 커밋(contents:write)
+├─ .github/workflows/market_wrap.yml # 🇰🇷 오늘의 증시 하루정리: KST 평일 15:40 발송(지수·대형주·관전포인트)
 ├─ .streamlit/config.toml # 테마 팔레트(#F6F8FB 배경, #2563EB 강조)
 ├─ src/
 │  ├─ prices.py     # 시세·환율·펀더멘털(get_fundamentals)·전문가의견·get_quote(거래대금/시총)
@@ -124,6 +125,8 @@ jusik/
 ## 7. 알아둘 점 / 주의
 
 - **폰에서 목표가 편집**: 알림설정 페이지 저장 시 `data/alerts.json`을 GitHub에 커밋(gitstore). Streamlit Secrets에 `GH_TOKEN`(jusik repo Contents read/write 세밀권한 PAT) 필요. 토큰 있으면 "☁️ 클라우드 저장 연결됨" 표시, 저장 시 자동 알림에 반영(앱 잠시 재배포). 토큰 없으면 로컬 저장만.
+- **알림 메시지(간결형, 2026-07)**: 결론 먼저(🟢매수/🟡관망/🔴매도 + 점수) → 💰가격 요약 표(현재/지지/저항/목표/매수/손절, 아이콘+거리%) → 신호변화 시 📰뉴스 1줄. _alert_caption/_price_rows/_opinion. 상세는 대시보드.
+- **하루 정리(build_market_wrap)**: '오늘의 증시' — 지수(코스피·코스닥·환율)→대형주 등락→관전포인트. KST 평일 15:40 크론(market_wrap.yml). 수급 데이터는 무료 소스 부재로 제외.
 - **알림 종류**: 신호변화 / 🎯목표가(이상) / 🟢매수자리=진입가(이하) / 🛑손절가(이하). alerts.json 키: target/entry/stop/signal_alert. 대시보드 알림설정에서 종목별 입력+버튼(현재가대비 %)으로 설정, 저장 시 GitHub 반영.
 - **알림 차트 첨부**: 알림 발생 시 그 종목 차트(chartimg)를 만들어 notify.send_photo로 캡션과 함께 발송(_send_with_chart), 실패 시 텍스트 폴백. 차트엔 사용자 목표가(초록)·매수자리(청록) 선도 표시. 리눅스 러너 한글은 alerts.yml에서 fonts-nanum 설치(chartimg가 NanumGothic 경로 fallback).
 - **모바일 반응형**: CUSTOM_CSS에 @media(max-width:640px) — st.columns 세로 정렬, 카드값 nowrap, 표 가로스크롤(.table-scroll). 차트는 범례 하단 이동+부가트레이스 범례숨김+dragmode=pan+responsive.

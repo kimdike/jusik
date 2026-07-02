@@ -1,0 +1,30 @@
+name: 오늘의 증시 하루 정리
+
+# 한국 장 마감 후(평일 오후) '오늘의 증시' 요약(지수·대형주·관전포인트)을 텔레그램으로 발송.
+
+on:
+  schedule:
+    - cron: "40 6 * * 1-5"   # UTC 06:40 = KST 15:40 (한국 장 마감 직후, 평일)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-alerts.txt
+      - name: 의존성 설치 (경량)
+        run: pip install -r requirements-alerts.txt
+      - name: 하루 정리 발송
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python alerts_run.py --wrap

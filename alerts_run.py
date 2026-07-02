@@ -43,6 +43,7 @@ def main() -> None:
     ap.add_argument("--test", action="store_true", help="텔레그램 테스트 메시지 발송")
     ap.add_argument("--brief", action="store_true", help="워치리스트 아침 브리핑 발송")
     ap.add_argument("--discover", action="store_true", help="종목 발굴 스캔 → discovery.json 저장")
+    ap.add_argument("--wrap", action="store_true", help="오늘의 증시 하루 정리 발송")
     args = ap.parse_args()
 
     if args.test:
@@ -53,6 +54,12 @@ def main() -> None:
     if args.brief:
         text = alerts.build_briefing(send_telegram=True)
         print(f"[{_ts()}] 브리핑 발송:")
+        print(text)
+        return
+
+    if args.wrap:
+        text = alerts.build_market_wrap(send_telegram=True)
+        print(f"[{_ts()}] 하루 정리 발송:")
         print(text)
         return
 

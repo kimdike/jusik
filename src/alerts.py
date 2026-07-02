@@ -91,70 +91,67 @@ def run_once(send_telegram: bool = True) -> list[str]:
             continue
 
         res = signals.evaluate(df)
-        band_key, band_label = band_of(res.get("up_pct"))
+        up = res.get("up_pct")
+        band_key, band_label = band_of(up)
         prev = state.get(k, {})
         first_seen = not prev
-        cur_msgs: list[str] = []  # 이 종목에서 이번에 발생한 알림들
+        cur_msgs: list[str] = []            # 반환/대시보드용 짧은 로그
+        triggers: list[tuple[str, str]] = []  # (이모지, 짧은 라벨) — 캡션 헤더용
         sig_changed = False
 
         # --- A1: 신호 변화 ---
-        signal_on = cfg.get("signal_alert", True)  # 기본 켜짐
-        if signal_on and not first_seen:
-            prev_band = prev.get("band")
-            if prev_band and prev_band != band_key and band_key != "none":
-                _, prev_label = band_of_label(prev_band)
-                arrow = "📈" if _band_rank(band_key) > _band_rank(prev_band) else "📉"
+        if cfg.get("signal_alert", True) and not first_seen:
+            pb = prev.get("band")
+            if pb and pb != band_key and band_key != "none":
+                arrow = "📈" if _band_rank(band_key) > _band_rank(pb) else "📉"
                 sig_changed = True
-                cur_msgs.append(
-                    f"{arrow} [신호 변화] {name} ({sym})\n"
-                    f"{prev_label} → {band_label} (상승우세 {res['up_pct']:.0f}%)\n"
-                    f"현재가 {_fmt_price(cur, mkt)}"
-                )
+                triggers.append(("🔔", f"신호 변경 → {arrow} {band_label}"))
+                cur_msgs.append(f"🔔 신호변경 {name}({sym}) → {band_label}")
 
-        # --- A2: 목표가 / 진입가(매수 자리) / 손절가 ---
+        # --- A2: 목표가 / 매수자리 / 손절가 (크로싱) ---
         prev_price = prev.get("price")
-        target = cfg.get("target")
-        entry = cfg.get("entry")
-        stop = cfg.get("stop")
+        target, entry, stop = cfg.get("target"), cfg.get("entry"), cfg.get("stop")
         if not first_seen and prev_price is not None:
             if target and prev_price < target <= cur:
-                cur_msgs.append(
-                    f"🎯 [목표가 도달] {name} ({sym})\n"
-                    f"목표 {_fmt_price(target, mkt)} 도달 — 현재가 {_fmt_price(cur, mkt)}"
-                )
+                triggers.append(("🎯", "목표가 도달"))
+                cur_msgs.append(f"🎯 목표가 {name}({sym}) {_fmt_price(target, mkt)}")
             if entry and prev_price > entry >= cur:
-                cur_msgs.append(
-                    f"🟢 [매수 자리 도달] {name} ({sym})\n"
-                    f"진입 희망가 {_fmt_price(entry, mkt)} 도달 — 현재가 {_fmt_price(cur, mkt)}"
-                )
+                triggers.append(("🟢", "매수 자리"))
+                cur_msgs.append(f"🟢 매수자리 {name}({sym}) {_fmt_price(entry, mkt)}")
             if stop and prev_price > stop >= cur:
-                cur_msgs.append(
-                    f"🛑 [손절가 도달] {name} ({sym})\n"
-                    f"손절 {_fmt_price(stop, mkt)} 이탈 — 현재가 {_fmt_price(cur, mkt)}"
-                )
+                triggers.append(("🛑", "손절가"))
+                cur_msgs.append(f"🛑 손절가 {name}({sym}) {_fmt_price(stop, mkt)}")
 
         state[k] = {"band": band_key, "price": cur}
 
-        if cur_msgs:
+        if triggers:
             messages.extend(cur_msgs)
             if send_telegram:
-                # 종목별 차트 + 가격 정리(현재가 아래 진입타점)를 캡션에 붙여 발송
-                caption = "\n\n".join(cur_msgs) + "\n\n" + _price_brief(mkt, df, cfg)
-                if sig_changed:  # 신호 변화 알림엔 관련 뉴스도 첨부
-                    nb = _news_brief(name, mkt)
-                    if nb:
-                        caption += "\n\n" + nb
-                _send_with_chart(sym, mkt, name, df, cfg, caption)
+                cap = _alert_caption(name, sym, mkt, df, cfg, up, triggers, sig_changed)
+                _send_with_chart(sym, mkt, name, df, cfg, cap)
 
     _save(STATE_FILE, state)
     return messages
 
 
-def _price_brief(mkt: str, df, cfg: dict) -> str:
-    """알림 캡션에 붙일 '가격 정리' — 현재가 아래로 목표가/매수자리/손절가 + 주요 지지·저항(타점)."""
+_DIV = "━━━━━━━━━━"
+
+
+def _opinion(up) -> tuple[str, str]:
+    """종합점수 → (이모지, 라벨). 🟢 매수 우위 / 🟡 관망 / 🔴 매도 우위."""
+    if up is None:
+        return "⚪", "데이터 부족"
+    if up >= 60:
+        return "🟢", "매수 우위"
+    if up <= 40:
+        return "🔴", "매도 우위"
+    return "🟡", "관망"
+
+
+def _price_rows(mkt: str, df, cfg: dict) -> list[str]:
+    """가격 요약 표(현재/지지/저항/목표/매수/손절) — 아이콘+거리%."""
     from . import indicators as ind
     from . import levels as lv
-
     cur = float(df["close"].iloc[-1])
 
     def f(v):
@@ -163,44 +160,51 @@ def _price_brief(mkt: str, df, cfg: dict) -> str:
     def pct(v):
         return f"({(v - cur) / cur * 100:+.1f}%)" if cur else ""
 
-    lines = ["📊 가격 정리", f"현재가 {f(cur)}"]
-    if cfg.get("target"):
-        lines.append(f"🎯 목표가 {f(cfg['target'])} {pct(cfg['target'])}")
-    if cfg.get("entry"):
-        lines.append(f"🟢 매수자리 {f(cfg['entry'])} {pct(cfg['entry'])}")
-    if cfg.get("stop"):
-        lines.append(f"🛑 손절가 {f(cfg['stop'])} {pct(cfg['stop'])}")
+    rows = [f"현재   {f(cur)}"]
     try:
         L = lv.compute_levels(df, ind.compute_all(df))
-        res = (L.get("resistances") or [])[:2]
-        sup = (L.get("supports") or [])[:2]
-        if res:
-            lines.append("⬆ 저항(매도/돌파 타점): "
-                         + " · ".join(f"{f(r['price'])} {pct(r['price'])}" for r in res))
-        if sup:
-            lines.append("⬇ 지지(매수 타점): "
-                         + " · ".join(f"{f(s['price'])} {pct(s['price'])}" for s in sup))
+        s = (L.get("supports") or [{}])[0]
+        r = (L.get("resistances") or [{}])[0]
+        if s.get("price"):
+            rows.append(f"🟢 지지 {f(s['price'])} {pct(s['price'])}")
+        if r.get("price"):
+            rows.append(f"🔴 저항 {f(r['price'])} {pct(r['price'])}")
     except Exception:
         pass
-    return "\n".join(lines)
+    if cfg.get("target"):
+        rows.append(f"🎯 목표 {f(cfg['target'])} {pct(cfg['target'])}")
+    if cfg.get("entry"):
+        rows.append(f"🟢 매수 {f(cfg['entry'])} {pct(cfg['entry'])}")
+    if cfg.get("stop"):
+        rows.append(f"🛑 손절 {f(cfg['stop'])} {pct(cfg['stop'])}")
+    return rows
 
 
-def _news_brief(name: str, mkt: str) -> str:
-    """신호 변화 알림에 붙일 관련 뉴스 1~2건(제목+링크). 실패 시 빈 문자열."""
+def _news_one(name: str, mkt: str) -> str:
+    """관련 뉴스 1건 제목. 실패 시 빈 문자열."""
     try:
         from . import news as news_mod
         region = "US" if mkt.upper() == "US" else "KR"
-        items = news_mod.get_news(name, region=region, limit=2)
-        if not items:
-            return ""
-        lines = ["📰 관련 뉴스 (자세히는 대시보드 관련뉴스)"]
-        for n in items[:2]:
-            title = (n.get("title") or "").strip()
-            if title:
-                lines.append(f"• {title}")
-        return "\n".join(lines) if len(lines) > 1 else ""
+        items = news_mod.get_news(name, region=region, limit=1)
+        t = (items[0].get("title") or "").strip() if items else ""
+        return f"📰 {t}" if t else ""
     except Exception:
         return ""
+
+
+def _alert_caption(name: str, sym: str, mkt: str, df, cfg: dict, up,
+                   triggers: list[tuple[str, str]], sig_changed: bool) -> str:
+    """간결 알림 캡션: 결론 먼저 → 가격 요약 표 → (신호변화 시) 뉴스 1줄."""
+    hdr = " · ".join(f"{e} {l}" for e, l in triggers)
+    oe, ol = _opinion(up)
+    up_s = f"{up:.0f}" if up is not None else "-"
+    lines = [hdr, f"{name} ({sym})", "", f"{oe} {ol} ({up_s}/100)",
+             _DIV, "💰 가격 요약"] + _price_rows(mkt, df, cfg)
+    if sig_changed:
+        nb = _news_one(name, mkt)
+        if nb:
+            lines += [_DIV, nb]
+    return "\n".join(lines)
 
 
 def _send_with_chart(sym: str, mkt: str, name: str, df, cfg: dict, caption: str) -> None:
@@ -283,3 +287,75 @@ def band_of_label(band_key: str) -> tuple[str, str]:
         "bear": "하락 우세", "strong_bear": "강한 하락 우세", "none": "신호 없음",
     }
     return band_key, labels.get(band_key, band_key)
+
+
+def build_market_wrap(send_telegram: bool = True) -> str:
+    """장 마감 후 '오늘의 증시' 하루 정리 — 지수·환율 → 대형주 등락 → 관전 포인트.
+    (외국인/기관/개인 수급은 무료 데이터로 불가해 제외)"""
+    from datetime import datetime, timedelta, timezone
+
+    from . import market as mkt_mod
+    kst = datetime.now(timezone(timedelta(hours=9)))
+    idx = {d["name"]: d for d in mkt_mod.get_indices()}
+
+    def arw(c):
+        return "🔻" if (c or 0) < 0 else "🔺" if (c or 0) > 0 else "▪️"
+
+    L = [f"🇰🇷 오늘의 증시 ({kst.month}월 {kst.day}일)", _DIV]
+    for nm in ("코스피", "코스닥"):
+        d = idx.get(nm)
+        if d and d.get("change_pct") is not None:
+            L.append(f"{arw(d['change_pct'])} {nm} {d['value']:,.2f} ({d['change_pct']:+.2f}%)")
+    fx = idx.get("USD/KRW")
+    if fx and fx.get("change_pct") is not None:
+        L.append(f"{arw(fx['change_pct'])} 원·달러 {fx['value']:,.2f} ({fx['change_pct']:+.2f}%)")
+
+    # 대형주 등락 (낙폭/상승폭 큰 순)
+    bigs = [("삼성전자", "005930"), ("SK하이닉스", "000660"), ("현대차", "005380"),
+            ("기아", "000270"), ("NAVER", "035420"), ("LG에너지솔루션", "373220"),
+            ("셀트리온", "068270"), ("카카오", "035720"), ("KB금융", "105560"),
+            ("현대모비스", "012330")]
+    movers = []
+    for nm, code in bigs:
+        df = prices.get_ohlcv(code, "KR", "5d")
+        if df is None or len(df) < 2:
+            continue
+        movers.append((nm, (float(df["close"].iloc[-1]) / float(df["close"].iloc[-2]) - 1) * 100))
+    if movers:
+        movers.sort(key=lambda x: x[1])
+        L += [_DIV, "💥 시가총액 대형주"]
+        for nm, c in movers[:5]:
+            L.append(f"{arw(c)} {nm} {c:+.2f}%")
+
+    # 해외 한 줄
+    ov = []
+    for nm, lbl in (("S&P 500", "S&P"), ("나스닥", "나스닥")):
+        d = idx.get(nm)
+        if d and d.get("change_pct") is not None:
+            ov.append(f"{lbl} {d['change_pct']:+.2f}%")
+    if ov:
+        L += [_DIV, "🌎 해외 " + " · ".join(ov)]
+
+    # 관전 포인트 (자동)
+    pts = []
+    ks = idx.get("코스피", {}).get("change_pct")
+    if ks is not None and ks <= -2:
+        pts.append("코스피 큰 폭 하락")
+    elif ks is not None and ks >= 2:
+        pts.append("코스피 큰 폭 상승")
+    semi = [c for nm, c in movers if nm in ("삼성전자", "SK하이닉스")]
+    if semi and sum(semi) / len(semi) <= -2:
+        pts.append("반도체 대형주 약세가 지수 압박")
+    elif semi and sum(semi) / len(semi) >= 2:
+        pts.append("반도체 대형주 강세가 지수 견인")
+    if fx and (fx.get("change_pct") or 0) > 0.3:
+        pts.append("원화 약세(환율 상승)")
+    if not pts:
+        pts.append("특이 급변동 없이 보합권")
+    L += [_DIV, "👀 관전 포인트"] + [f"• {p}" for p in pts]
+    L += ["", "※ 지수·대형주 자동 요약 · 투자 판단은 본인 책임"]
+
+    text = "\n".join(L)
+    if send_telegram:
+        notify.send(text)
+    return text
