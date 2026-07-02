@@ -511,25 +511,28 @@ def make_chart(df: pd.DataFrame, all_ind: dict, title: str, levels: dict | None 
 
     # 지지/저항 — 터치 기반(실제 반응 자리) 우선, 없으면 기존 지표 기반 levels
     if touch and (touch.get("resistances") or touch.get("supports")):
-        for r in touch.get("resistances", []):
-            fig.add_hline(y=r["price"], line_dash="dash", line_color="rgba(192,57,43,0.7)",
-                          annotation_text=f"저항 {r['price']:,.0f} ({r['touches']}번)",
-                          annotation_position="right", row=1, col=1)
-        for s in touch.get("supports", []):
-            fig.add_hline(y=s["price"], line_dash="dash", line_color="rgba(22,160,133,0.75)",
-                          annotation_text=f"지지 {s['price']:,.0f} ({s['touches']}번)",
-                          annotation_position="right", row=1, col=1)
-        # 실제 반응한 지점(피벗)을 점으로 — 눈에 보이는 근거
-        for items, mcol in [(touch.get("resistances", []), "#c0392b"),
-                            (touch.get("supports", []), "#16a085")]:
-            xs, ys = [], []
-            for it in items:
-                for pos in it.get("members", []):
-                    if 0 <= pos < len(df):
-                        xs.append(df.index[pos]); ys.append(it["price"])
+        cur_px = float(df["close"].iloc[-1]) or 1.0
+        res2 = (touch.get("resistances") or [])[:2]
+        sup2 = (touch.get("supports") or [])[:2]
+        sr = ([("저항", r, "rgba(192,57,43,0.7)", "#c0392b") for r in res2]
+              + [("지지", s, "rgba(22,160,133,0.85)", "#16a085") for s in sup2])
+        sr.sort(key=lambda t: t[1]["price"], reverse=True)
+        last_lbl_y = None  # 라벨이 서로 겹치지 않게: 직전 라벨과 4.5% 이상 떨어질 때만 라벨 표시
+        for tag, lv, line_col, dot_col in sr:
+            show = last_lbl_y is None or abs(lv["price"] - last_lbl_y) / cur_px > 0.045
+            fig.add_hline(
+                y=lv["price"], line_dash="dash", line_color=line_col, row=1, col=1,
+                annotation_text=(f"{tag} {lv['price']:,.0f}·{lv['touches']}회" if show else ""),
+                annotation_position="right", annotation_font_size=10,
+            )
+            if show:
+                last_lbl_y = lv["price"]
+            # 실제 반응한 지점(피벗)을 점으로 — 눈에 보이는 근거
+            xs = [df.index[p] for p in lv.get("members", []) if 0 <= p < len(df)]
             if xs:
-                fig.add_trace(go.Scatter(x=xs, y=ys, mode="markers", showlegend=False,
-                                         marker=dict(size=6, color=mcol,
+                fig.add_trace(go.Scatter(x=xs, y=[lv["price"]] * len(xs), mode="markers",
+                                         showlegend=False,
+                                         marker=dict(size=6, color=dot_col,
                                                      line=dict(width=1, color="white"))),
                               row=1, col=1)
     elif levels:
@@ -548,7 +551,7 @@ def make_chart(df: pd.DataFrame, all_ind: dict, title: str, levels: dict | None 
         # 범례는 아래로 — 좁은 화면에서 상단 기간버튼·제목과 겹치지 않게
         legend=dict(orientation="h", yanchor="top", y=-0.06, xanchor="left", x=0,
                     font=dict(size=10)),
-        margin=dict(l=8, r=72, t=58, b=44),  # 오른쪽 지지/저항 라벨 여백 + 하단 범례 공간
+        margin=dict(l=8, r=96, t=58, b=44),  # 오른쪽 지지/저항 라벨 여백(잘림 방지) + 하단 범례
     )
     # 빠른 기간 버튼 (가격 차트 위) — 탭하면 그 구간으로 확대
     fig.update_xaxes(
