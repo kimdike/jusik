@@ -1845,3 +1845,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# redeploy: hero_verdict UX v2 (2026-07-02)
