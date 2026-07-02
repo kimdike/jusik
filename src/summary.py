@@ -130,6 +130,53 @@ def verdict_cards(result: dict, levels: dict, all_ind: dict, market: str) -> lis
     ]
 
 
+def hero_verdict(result: dict, all_ind: dict) -> dict:
+    """
+    최상단 Hero용 한 줄 결론.
+    반환: {action, emoji, color, score, meaning, confidence, reasons:[(kind, text)]}
+      - action: 매수 우위 / 관망 / 매도 우위
+      - confidence: 지표 쏠림 + 추세강도(ADX) 기반 '신호 신뢰도'(확률 아님)
+      - reasons: 가중치 높은 핵심 지표 ✅상승/❌하락/➖중립 요약
+    """
+    up = result.get("up_pct")
+    votes = result.get("votes", [])
+    if up is None:
+        return {"action": "데이터 부족", "emoji": "⚪", "color": "#9CA3AF",
+                "score": None, "meaning": "데이터가 부족합니다", "confidence": None, "reasons": []}
+
+    if up >= 60:
+        action, emoji, color, meaning = "매수 우위", "🟢", "#16A34A", "상승 신호가 우세한 구간"
+    elif up <= 40:
+        action, emoji, color, meaning = "매도 우위", "🔴", "#DC2626", "하락 신호가 우세한 구간"
+    else:
+        action, emoji, color, meaning = "관망", "🟡", "#CA8A04", "방향성이 약한 중립 구간"
+
+    # 신뢰도: 쏠림(|up-50|) + 추세강도(ADX)
+    adx_df = all_ind.get("adx")
+    adx = None
+    try:
+        s = adx_df["adx"].dropna()
+        adx = float(s.iloc[-1]) if not s.empty else None
+    except Exception:
+        adx = None
+    adx_bonus = min(12.0, max(0.0, (adx - 20)) * 0.5) if adx is not None else 0.0
+    confidence = int(round(min(96.0, 45 + abs(up - 50) * 1.7 + adx_bonus)))
+
+    # 근거: 가중치 큰 순 핵심 지표
+    word = {"bull": "상승", "bear": "하락", "neutral": "중립"}
+    mark = {"bull": "✅", "bear": "❌", "neutral": "➖"}
+    reasons = []
+    for v in sorted(votes, key=lambda x: x.get("weight", 0), reverse=True):
+        if v["signal"] == "neutral" and len([r for r in reasons if r[0] == "neutral"]) >= 1:
+            continue  # 중립은 최대 1개만
+        reasons.append((v["signal"], f"{mark[v['signal']]} {v['name']} {word[v['signal']]}"))
+        if len(reasons) >= 5:
+            break
+
+    return {"action": action, "emoji": emoji, "color": color, "score": round(up),
+            "meaning": meaning, "confidence": confidence, "reasons": reasons}
+
+
 def weight_stars(w: float) -> tuple[str, str]:
     """가중치 -> (별점, 중요도 라벨)."""
     if w >= 1.5:

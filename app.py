@@ -30,7 +30,8 @@ from src import summary as summary_mod
 # ---------------------------------------------------------------------------
 # 기본 설정 / 경로
 # ---------------------------------------------------------------------------
-st.set_page_config(page_title="내 주식·자산 대시보드", page_icon="📈", layout="wide")
+st.set_page_config(page_title="내 주식·자산 대시보드", page_icon="📈", layout="wide",
+                   initial_sidebar_state="expanded")
 
 DATA_DIR = Path(__file__).parent / "data"
 PORTFOLIO_FILE = DATA_DIR / "portfolio.json"
@@ -131,6 +132,16 @@ hr { border-color: #E5E7EB; margin: 1rem 0; }
     table.sig { font-size: .82rem; }
     table.sig th, table.sig td { padding: 7px 8px !important; }
     h1 { font-size: 22px !important; } h2 { font-size: 18px !important; }
+}
+
+/* 접힌 사이드바 '메뉴 열기' 버튼 — 모바일에서 잘 보이게 파란 버튼으로 */
+[data-testid="collapsedControl"], [data-testid="stSidebarCollapsedControl"] {
+    background: #2563EB !important; border-radius: 10px !important;
+    padding: 5px 7px !important; box-shadow: 0 2px 8px rgba(37,99,235,.4);
+    top: .55rem !important; left: .55rem !important;
+}
+[data-testid="collapsedControl"] svg, [data-testid="stSidebarCollapsedControl"] svg {
+    color: #fff !important; fill: #fff !important; width: 1.7rem !important; height: 1.7rem !important;
 }
 </style>
 """
@@ -768,53 +779,58 @@ def page_analysis():
     pr = (cur - first) / first * 100 if first else 0.0
     mkt_label = {"KR": "KRX", "US": "US", "COIN": "Upbit"}.get(market, market)
 
-    # 종목 한 줄 요약
+    # 종목 헤더 (한 줄)
     st.markdown(
-        f'<div style="font-size:15px;color:#6B7280;margin:.2rem 0 1rem">'
+        f'<div style="font-size:15px;color:#6B7280;margin:.2rem 0 .5rem">'
         f'<b style="color:#111827;font-size:17px">{dispname}</b>'
         f'&nbsp; {symbol} · {mkt_label}</div>',
         unsafe_allow_html=True,
     )
 
-    # 결론 3카드 (현재 상태 / 진입 매력도 / 위험도) — 5초 브리핑
-    for vc, col in zip(summary_mod.verdict_cards(result, levels, all_ind, market), st.columns(3)):
-        emoji, color = summary_mod.TRAFFIC[vc["level"]]
-        with col:
-            st.markdown(
-                f'<div class="card" style="border-top:4px solid {color}">'
-                f'<div class="lbl">{vc["title"]}</div>'
-                f'<div style="font-size:21px;font-weight:700;color:{color};margin:2px 0 8px">'
-                f'{emoji} {vc["label"]}</div>'
-                f'<div style="font-size:13.5px;color:#374151;line-height:1.55">{vc["text"]}</div></div>',
-                unsafe_allow_html=True)
-
-    st.write("")
-    # 가격 요약 (작게 — 보조)
+    # ===== Hero: 현재가·등락률 + 종합 의견 + 종합점수/신뢰도 (결론 먼저) =====
+    hv = summary_mod.hero_verdict(result, all_ind)
     up = result.get("up_pct")
-    pc1, pc2, pc3 = st.columns(3)
-    with pc1:
-        st.markdown(card_html("현재가", fmt_native(cur, market),
-                              sub=f'{period_label} 수익률 <span class="{_chg_cls(pr)}">{pr:+.1f}%</span>',
-                              val_sm=True), unsafe_allow_html=True)
-    with pc2:
-        st.markdown(card_html("전일 대비", f"{chg:+.2f}%", sub="전일 종가 대비",
-                              value_cls=_chg_cls(chg), val_sm=True), unsafe_allow_html=True)
-    with pc3:
-        if up is not None:
-            fill = "#E53935" if up >= 55 else ("#2563EB" if up < 45 else "#9CA3AF")
-            tip = ("지표 10여 개가 상승/하락에 투표한 결과를 0~100으로 종합한 값입니다. "
-                   "100=대부분 상승 신호, 50=반반, 0=대부분 하락 신호. "
-                   "오를 확률이 아니라 신호 쏠림 정도입니다.")
-            st.markdown(
-                f'<div class="card" title="{tip}"><div class="lbl">종합 신호 점수 '
-                f'<span class="info">ⓘ</span></div>'
-                f'<div class="val sm">{up:.0f}<span style="font-size:14px;color:#9CA3AF"> / 100</span></div>'
-                f'<div class="scorebar-track" style="margin:9px 0 6px">'
-                f'<div class="scorebar-fill" style="width:{up}%;background:{fill}"></div></div>'
-                f'<div class="sub">지표 종합 상승 쏠림도 · 100=상승일색, 50=중립</div></div>',
-                unsafe_allow_html=True)
-        else:
-            st.markdown(card_html("종합 신호 점수", "-", val_sm=True), unsafe_allow_html=True)
+    hcol = hv["color"]
+    chg_col = "#16A34A" if chg > 0 else "#DC2626" if chg < 0 else "#6B7280"
+    pr_col = "#16A34A" if pr > 0 else "#DC2626" if pr < 0 else "#6B7280"
+    sc_str = str(hv["score"]) if hv["score"] is not None else "-"
+    conf_str = f'{hv["confidence"]}%' if hv["confidence"] is not None else "-"
+    bar_pct = hv["score"] if hv["score"] is not None else 50
+    hleft, hright = st.columns([1, 1.25])
+    with hleft:
+        st.markdown(
+            f'<div class="card"><div class="lbl">현재가</div>'
+            f'<div style="font-size:30px;font-weight:800;letter-spacing:-.02em;color:#111827;line-height:1.1">'
+            f'{fmt_native(cur, market)}</div>'
+            f'<div style="font-size:16px;font-weight:700;color:{chg_col};margin-top:4px">{chg:+.2f}%'
+            f'<span style="font-size:12px;color:#9CA3AF;font-weight:500"> 전일 대비</span></div>'
+            f'<div class="sub">{tf_label} 수익률 <span style="color:{pr_col};font-weight:600">{pr:+.1f}%</span></div>'
+            f'</div>', unsafe_allow_html=True)
+    with hright:
+        st.markdown(
+            f'<div class="card" style="border-top:4px solid {hcol}">'
+            f'<div class="lbl">종합 의견</div>'
+            f'<div style="font-size:25px;font-weight:800;color:{hcol};margin:1px 0">{hv["emoji"]} {hv["action"]}</div>'
+            f'<div class="sub" style="margin-bottom:7px">{hv["meaning"]}</div>'
+            f'<div style="display:flex;gap:18px;align-items:baseline">'
+            f'<div><span style="font-size:22px;font-weight:800;color:#111827">{sc_str}</span>'
+            f'<span style="font-size:12px;color:#9CA3AF">/100 종합점수</span></div>'
+            f'<div style="font-size:13px;color:#6B7280">신뢰도 <b style="color:#374151">{conf_str}</b></div></div>'
+            f'<div class="scorebar-track" style="margin:8px 0 2px">'
+            f'<div class="scorebar-fill" style="width:{bar_pct}%;background:{hcol}"></div></div>'
+            f'</div>', unsafe_allow_html=True)
+
+    # ===== 판단 근거 (✅상승 / ❌하락 / ➖중립) =====
+    if hv["reasons"]:
+        chips = ""
+        for kind, txt in hv["reasons"]:
+            c = "#16A34A" if kind == "bull" else "#DC2626" if kind == "bear" else "#6B7280"
+            chips += (f'<span style="display:inline-block;background:#F3F4F6;border-radius:8px;'
+                      f'padding:5px 11px;margin:3px 5px 3px 0;font-size:13.5px;color:{c};'
+                      f'font-weight:600">{html_lib.escape(txt)}</span>')
+        st.markdown(f'<div style="margin:12px 0 2px"><div class="lbl" style="margin-bottom:4px">'
+                    f'판단 근거 (핵심 지표)</div>{chips}</div>', unsafe_allow_html=True)
+        st.caption("✅상승 ❌하락 ➖중립 · 종합점수=상승 쏠림도(오를 확률 아님) · 신뢰도=쏠림·추세강도 기반 신호 강도")
 
     st.write("")
     # 메인 차트 (화면 중심) — 터치 기반 지지/저항 + (옵션) 평행 채널
@@ -830,208 +846,32 @@ def page_analysis():
     st.caption("점(●)이 있는 지지/저항 = 과거 실제로 여러 번 반응한 자리(터치 횟수 표시)라 더 신뢰도가 높아요. "
                "차트: 더블클릭=원상복구 · 휠=확대 · 드래그=영역확대")
 
-    # 지표 요약 카드
-    mini = indicator_mini_cards(result, all_ind)
-    if mini:
-        st.subheader("지표 요약")
-        mcols = st.columns(len(mini))
-        for col, m in zip(mcols, mini):
-            with col:
-                st.markdown(card_html(m["name"], m["value"], sub=m["sub"],
-                                      value_cls=m["cls"], val_sm=True), unsafe_allow_html=True)
+    # ===== 지지 / 저항 (세로 가격 사다리) =====
+    st.subheader("지지 · 저항")
+    res_lad = sorted(levels.get("resistances", []), key=lambda x: x["price"], reverse=True)[:3]
+    sup_lad = sorted(levels.get("supports", []), key=lambda x: x["price"], reverse=True)[:3]
 
-    # 종합 총평 (추세 / 모멘텀 / 진입 리스크 3단)
-    st.subheader("종합 총평")
-    st.markdown(
-        f'<div class="summary-box">{summary_mod.build_summary(result, levels, all_ind, fund, market)}</div>',
-        unsafe_allow_html=True,
-    )
-    st.caption("기술적 지표를 자동 정리한 참고 해석입니다. 투자 판단과 책임은 본인에게 있습니다.")
+    def _lad_row(price, dist, kind):
+        pal = {"res": ("#FDECEC", "#C0392B", "저항"),
+               "cur": ("#EAF0FE", "#1D4ED8", "현재가"),
+               "sup": ("#E8F5EE", "#16A34A", "지지")}
+        bg, tc, tag = pal[kind]
+        d = f'<span style="color:{tc};font-weight:700">{dist:+.1f}%</span>' if dist is not None else ""
+        wt = "800" if kind == "cur" else "600"
+        dot = "● " if kind == "cur" else ""
+        return (f'<div style="display:flex;justify-content:space-between;align-items:center;'
+                f'background:{bg};border-radius:8px;padding:9px 14px;margin:4px 0">'
+                f'<span style="color:{tc};font-weight:{wt};font-size:14.5px">{dot}{tag} {fmt_native(price, market)}</span>'
+                f'<span style="font-size:13px">{d}</span></div>')
 
-    # 전문가(애널리스트) 의견 — 컨센서스 괴리율 중심
-    cv = summary_mod.consensus_view(fund, market)
-    if cv:
-        st.subheader("전문가 의견 (증권사 컨센서스)")
-        tone_color = {"warn": "#E53935", "pos": "#2563EB", "calm": "#6B7280"}
-        gap_color = tone_color.get(cv["tone"], "#6B7280")
-        gap_str = f"{cv['gap']:+.1f}%" if cv["gap"] is not None else "-"
-        rec_color = ("#16A34A" if cv["rec"] in ("적극 매수", "매수", "매수 우위")
-                     else "#E53935" if cv["rec"] in ("매도", "적극 매도", "매도 우위") else "#6B7280")
+    ladder = "".join(_lad_row(r["price"], r["dist_pct"], "res") for r in res_lad)
+    ladder += _lad_row(cur, None, "cur")
+    ladder += "".join(_lad_row(s["price"], s["dist_pct"], "sup") for s in sup_lad)
+    st.markdown(ladder, unsafe_allow_html=True)
+    st.caption("위=저항(돌파해야 더 오름/팔 자리), 아래=지지(받쳐주는 곳/살 자리). %는 현재가 대비 거리 · 참고용")
 
-        # 괴리율 — 가장 강조 (풀폭 카드)
-        st.markdown(
-            f'<div class="card" style="border-left:5px solid {gap_color}">'
-            f'<div class="lbl">현재가 대비 평균 목표가 괴리율</div>'
-            f'<div class="val" style="color:{gap_color}">{gap_str}</div>'
-            f'<div class="sub">{cv["gap_label"]} · 현재가 {fmt_native(cv["current"], market)} '
-            f'· 평균 목표가 {fmt_native(cv["target_mean"], market)}</div></div>',
-            unsafe_allow_html=True,
-        )
-        st.write("")
-        cols = st.columns(5)
-        cols[0].markdown(
-            f'<div class="card"><div class="lbl">컨센서스 등급</div>'
-            f'<div class="val sm" style="color:{rec_color}">{cv["rec"]}</div></div>',
-            unsafe_allow_html=True)
-        cols[1].markdown(card_html("애널리스트 수", f"{cv['count']}명", val_sm=True), unsafe_allow_html=True)
-        cols[2].markdown(card_html("평균 목표가", fmt_native(cv["target_mean"], market), val_sm=True), unsafe_allow_html=True)
-        cols[3].markdown(card_html("최고 목표가", fmt_native(cv["target_high"], market), val_sm=True), unsafe_allow_html=True)
-        cols[4].markdown(card_html("최저 목표가", fmt_native(cv["target_low"], market), val_sm=True), unsafe_allow_html=True)
-
-        st.markdown(
-            f'<div style="margin-top:12px;padding:14px 18px;border-radius:10px;'
-            f'background:#F9FAFB;border:1px solid #E5E7EB;color:#374151;line-height:1.65">'
-            f'{cv["interp"]}</div>', unsafe_allow_html=True)
-        st.caption("증권사 애널리스트 투자의견·목표주가 평균 (출처: Yahoo Finance 집계). 참고용 정보입니다.")
-
-    # 기업 지표 (펀더멘털) — 코인 제외
-    if market != "COIN" and fund:
-        st.subheader("기업 지표")
-        f1, f2, f3, f4 = st.columns(4)
-        per = fund.get("per"); pbr = fund.get("pbr")
-        f1.metric("PER", f"{per:.1f}" if per is not None else "-")
-        f2.metric("PBR", f"{pbr:.2f}" if pbr is not None else "-")
-        f3.metric("시가총액", fmt_marketcap(fund.get("market_cap"), market))
-        dy = fund.get("dividend_yield")  # yfinance가 %단위로 반환 (예: 0.42 = 0.42%)
-        f4.metric("배당수익률", f"{dy:.2f}%" if dy is not None else "-")
-        pos = fund.get("week52_pos")
-        if pos is not None:
-            lo = fmt_native(fund.get("week52_low"), market)
-            hi = fmt_native(fund.get("week52_high"), market)
-            st.caption(f"52주 최저 {lo} ─ 현재 위치 {pos*100:.0f}% ─ 최고 {hi}")
-            st.progress(pos)
-
-    # 지표별 신호 — 긍정/부정 한눈 요약 먼저
-    st.subheader("지표별 신호")
-    pos_sig, neg_sig = summary_mod.signal_split(result)
-    ps1, ps2 = st.columns(2)
-    with ps1:
-        items = "".join(f"<li>{html_lib.escape(s)}</li>" for s in pos_sig) or "<li style='color:#9CA3AF'>없음</li>"
-        st.markdown(
-            f'<div class="card" style="border-top:4px solid #E53935">'
-            f'<div class="lbl" style="color:#E53935">긍정 신호 {len(pos_sig)}</div>'
-            f'<ul style="margin:6px 0 0 -8px;font-size:14px;color:#374151;line-height:1.7">{items}</ul></div>',
-            unsafe_allow_html=True)
-    with ps2:
-        items = "".join(f"<li>{html_lib.escape(s)}</li>" for s in neg_sig) or "<li style='color:#9CA3AF'>없음</li>"
-        st.markdown(
-            f'<div class="card" style="border-top:4px solid #2563EB">'
-            f'<div class="lbl" style="color:#2563EB">부정 신호 {len(neg_sig)}</div>'
-            f'<ul style="margin:6px 0 0 -8px;font-size:14px;color:#374151;line-height:1.7">{items}</ul></div>',
-            unsafe_allow_html=True)
-
-    # 상세 근거 테이블 (중요도 별점)
-    with st.expander("지표별 상세 근거 보기 (중요도·해설)", expanded=False):
-        st.caption("지표 이름·근거에 마우스를 올리면 설명이 떠요. (폰은 아래 '지표 설명 펼쳐보기' 참고)")
-        rows_html = ""
-        for v in result["votes"]:
-            name, sig = v["name"], v["signal"]
-            name_tip = html_lib.escape(glossary.explain(name), quote=True)
-            why_tip = html_lib.escape(glossary.rationale(name, sig), quote=True)
-            detail = html_lib.escape(v["detail"])
-            label, color = level_disp(sig, v["strength"])
-            stars, imp = summary_mod.weight_stars(v["weight"])
-            rows_html += (
-                "<tr>"
-                f'<td title="{name_tip}"><b>{html_lib.escape(name)}</b>'
-                '<span class="info">ⓘ</span></td>'
-                f'<td style="color:{color};font-weight:600;white-space:nowrap">{label}</td>'
-                f'<td title="{why_tip}">{detail}<span class="info">ⓘ</span></td>'
-                f'<td style="white-space:nowrap" title="중요도 {imp}">'
-                f'<span style="color:#F59E0B">{stars}</span> <span class="info">{imp}</span></td>'
-                "</tr>"
-            )
-        table_html = f"""
-        <style>
-        table.sig {{ width:100%; border-collapse:collapse; font-size:0.92rem;
-                     border:1px solid #E5E7EB; border-radius:12px; overflow:hidden; }}
-        table.sig th, table.sig td {{ padding:10px 12px; border-bottom:1px solid #F1F3F5; text-align:left; }}
-        table.sig th {{ background:#F9FAFB; font-weight:600; color:#6B7280; }}
-        table.sig tr:last-child td {{ border-bottom:none; }}
-        table.sig tr:hover td {{ background:#FAFBFC; }}
-        table.sig td[title] {{ cursor:help; }}
-        .info {{ color:#9CA3AF; font-size:0.8em; margin-left:4px; }}
-        </style>
-        <div class="table-scroll">
-        <table class="sig">
-          <tr><th>지표</th><th>신호</th><th>근거</th><th>중요도</th></tr>
-          {rows_html}
-        </table>
-        </div>
-        """
-        st.markdown(table_html, unsafe_allow_html=True)
-
-    # 모바일/처음 사용자용 — 지표별 정의 + 현재 신호 해설 펼쳐보기
-    with st.expander("📖 지표 설명 펼쳐보기 (처음이라면 여기!)"):
-        for v in result["votes"]:
-            label, color = level_disp(v["signal"], v["strength"])
-            st.markdown(
-                f"**{v['name']}** — <span style='color:{color};font-weight:600'>{label}</span>  \n"
-                f"· *지표란?* {glossary.explain(v['name'])}  \n"
-                f"· *지금 이 신호는?* {glossary.rationale(v['name'], v['signal'])}",
-                unsafe_allow_html=True,
-            )
-            st.divider()
-
-    # 주요 가격대 (지지/저항) — 핵심 카드 먼저, 상세는 아래 테이블
-    st.subheader("주요 가격대 (지지·저항)")
-    nsup = levels["supports"][0] if levels["supports"] else None
-    nres = levels["resistances"][0] if levels["resistances"] else None
-    kc1, kc2 = st.columns(2)
-    with kc1:
-        if nsup:
-            st.markdown(
-                f'<div class="card" style="border-top:4px solid #2563EB">'
-                f'<div class="lbl">가장 가까운 지지</div>'
-                f'<div class="val sm">{fmt_native(nsup["price"], market)}</div>'
-                f'<div class="sub">현재가 대비 <span class="down">{nsup["dist_pct"]:.1f}%</span> · 하락 위험</div></div>',
-                unsafe_allow_html=True)
-        else:
-            st.markdown(card_html("가장 가까운 지지", "-", sub="최근 저점 부근", val_sm=True), unsafe_allow_html=True)
-    with kc2:
-        if nres:
-            st.markdown(
-                f'<div class="card" style="border-top:4px solid #E53935">'
-                f'<div class="lbl">가장 가까운 저항</div>'
-                f'<div class="val sm">{fmt_native(nres["price"], market)}</div>'
-                f'<div class="sub">현재가 대비 <span class="up">+{nres["dist_pct"]:.1f}%</span> · 상승 여력</div></div>',
-                unsafe_allow_html=True)
-        else:
-            st.markdown(card_html("가장 가까운 저항", "-", sub="신고가권", val_sm=True), unsafe_allow_html=True)
-    st.caption("저항선까지의 상승 여력과 지지선까지의 하락 위험을 참고할 수 있습니다. 아래 표에서 더 많은 가격대를 확인하세요.")
-
-    lc1, lc2 = st.columns(2)
-    with lc1:
-        st.markdown("**🔵 지지 (아래)** — 현재가가 내려오면 주목")
-        if levels["supports"]:
-            sdf = pd.DataFrame([
-                {"가격": fmt_native(s["price"], market), "거리": f"{s['dist_pct']:.1f}%", "근거": s["label"]}
-                for s in levels["supports"]
-            ])
-            st.dataframe(sdf, use_container_width=True, hide_index=True)
-        else:
-            st.caption("뚜렷한 지지 없음 (현재가가 최근 저점 부근)")
-    with lc2:
-        st.markdown("**🔴 저항 (위)** — 돌파해야 더 오름")
-        if levels["resistances"]:
-            rdf = pd.DataFrame([
-                {"가격": fmt_native(s["price"], market), "거리": f"+{s['dist_pct']:.1f}%", "근거": s["label"]}
-                for s in levels["resistances"]
-            ])
-            st.dataframe(rdf, use_container_width=True, hide_index=True)
-        else:
-            st.caption("뚜렷한 저항 없음 (현재가가 최근 고점 부근)")
-
-    fib = all_ind["fibonacci"]
-    if fib:
-        with st.expander("📐 피보나치 되돌림 전체 레벨 보기"):
-            flevels = pd.DataFrame(
-                [{"레벨": k, "가격": fmt_native(v, market)} for k, v in fib["levels"].items()]
-            )
-            st.dataframe(flevels, use_container_width=True, hide_index=True)
-
-    # 관련 뉴스 — 분위기 요약 먼저, 원문 링크 아래
-    st.subheader("관련 뉴스")
+    # ===== 오늘 뉴스 (판단에 큰 영향 → 상단으로) =====
+    st.subheader("오늘 뉴스")
     region = "US" if market == "US" else "KR"
     news_items = fetch_news(dispname, region)
     if news_items:
@@ -1047,6 +887,132 @@ def page_analysis():
             unsafe_allow_html=True)
         st.write("")
     render_news(news_items, "관련 뉴스를 찾지 못했어요.")
+
+    # ===== 상세는 접이식(아코디언)으로 — 스크롤 축소 =====
+    st.write("")
+    st.markdown("##### 자세히 보기")
+
+    with st.expander("📊 지표별 신호 (상세)"):
+        # 지표 값 요약 (RSI 등) — 컴팩트
+        mini = indicator_mini_cards(result, all_ind)
+        if mini:
+            mcols = st.columns(len(mini))
+            for col, m in zip(mcols, mini):
+                with col:
+                    st.markdown(card_html(m["name"], m["value"], sub=m["sub"],
+                                          value_cls=m["cls"], val_sm=True), unsafe_allow_html=True)
+        pos_sig, neg_sig = summary_mod.signal_split(result)
+        ps1, ps2 = st.columns(2)
+        with ps1:
+            items = "".join(f"<li>{html_lib.escape(s)}</li>" for s in pos_sig) or "<li style='color:#9CA3AF'>없음</li>"
+            st.markdown(
+                f'<div class="card" style="border-top:4px solid #16A34A">'
+                f'<div class="lbl" style="color:#16A34A">긍정(상승) 신호 {len(pos_sig)}</div>'
+                f'<ul style="margin:6px 0 0 -8px;font-size:14px;color:#374151;line-height:1.7">{items}</ul></div>',
+                unsafe_allow_html=True)
+        with ps2:
+            items = "".join(f"<li>{html_lib.escape(s)}</li>" for s in neg_sig) or "<li style='color:#9CA3AF'>없음</li>"
+            st.markdown(
+                f'<div class="card" style="border-top:4px solid #DC2626">'
+                f'<div class="lbl" style="color:#DC2626">부정(하락) 신호 {len(neg_sig)}</div>'
+                f'<ul style="margin:6px 0 0 -8px;font-size:14px;color:#374151;line-height:1.7">{items}</ul></div>',
+                unsafe_allow_html=True)
+        rows_html = ""
+        for v in result["votes"]:
+            name, sig = v["name"], v["signal"]
+            name_tip = html_lib.escape(glossary.explain(name), quote=True)
+            why_tip = html_lib.escape(glossary.rationale(name, sig), quote=True)
+            detail = html_lib.escape(v["detail"])
+            label, color = level_disp(sig, v["strength"])
+            stars, imp = summary_mod.weight_stars(v["weight"])
+            rows_html += (
+                "<tr>"
+                f'<td title="{name_tip}"><b>{html_lib.escape(name)}</b><span class="info">ⓘ</span></td>'
+                f'<td style="color:{color};font-weight:600;white-space:nowrap">{label}</td>'
+                f'<td title="{why_tip}">{detail}<span class="info">ⓘ</span></td>'
+                f'<td style="white-space:nowrap"><span style="color:#F59E0B">{stars}</span> '
+                f'<span class="info">{imp}</span></td>'
+                "</tr>"
+            )
+        st.markdown(
+            f"""<style>
+            table.sig {{ width:100%; border-collapse:collapse; font-size:0.9rem;
+                         border:1px solid #E5E7EB; border-radius:12px; overflow:hidden; }}
+            table.sig th, table.sig td {{ padding:9px 11px; border-bottom:1px solid #F1F3F5; text-align:left; }}
+            table.sig th {{ background:#F9FAFB; font-weight:600; color:#6B7280; }}
+            table.sig tr:last-child td {{ border-bottom:none; }}
+            .info {{ color:#9CA3AF; font-size:0.8em; margin-left:4px; }}
+            </style>
+            <div class="table-scroll" style="margin-top:10px"><table class="sig">
+            <tr><th>지표</th><th>신호</th><th>근거</th><th>중요도</th></tr>{rows_html}</table></div>""",
+            unsafe_allow_html=True)
+
+    with st.expander("🧾 종합 총평 (추세·모멘텀·리스크)"):
+        st.markdown(
+            f'<div class="summary-box">{summary_mod.build_summary(result, levels, all_ind, fund, market)}</div>',
+            unsafe_allow_html=True)
+        st.caption("기술적 지표를 자동 정리한 참고 해석입니다. 투자 판단과 책임은 본인에게 있습니다.")
+
+    if market != "COIN" and fund:
+        with st.expander("🏢 기업 지표 (PER·PBR·배당)"):
+            f1, f2, f3, f4 = st.columns(4)
+            per = fund.get("per"); pbr = fund.get("pbr")
+            f1.metric("PER", f"{per:.1f}" if per is not None else "-")
+            f2.metric("PBR", f"{pbr:.2f}" if pbr is not None else "-")
+            f3.metric("시가총액", fmt_marketcap(fund.get("market_cap"), market))
+            dy = fund.get("dividend_yield")
+            f4.metric("배당수익률", f"{dy:.2f}%" if dy is not None else "-")
+            fpos = fund.get("week52_pos")
+            if fpos is not None:
+                lo = fmt_native(fund.get("week52_low"), market)
+                hi = fmt_native(fund.get("week52_high"), market)
+                st.caption(f"52주 최저 {lo} ─ 현재 위치 {fpos*100:.0f}% ─ 최고 {hi}")
+                st.progress(fpos)
+
+    cv = summary_mod.consensus_view(fund, market)
+    if cv:
+        with st.expander("👔 전문가 컨센서스 (증권사)"):
+            gap_str = f"{cv['gap']:+.1f}%" if cv["gap"] is not None else "-"
+            gap_col = "#16A34A" if (cv["gap"] or 0) > 0 else "#DC2626" if (cv["gap"] or 0) < 0 else "#6B7280"
+            rec_col = ("#16A34A" if cv["rec"] in ("적극 매수", "매수", "매수 우위")
+                       else "#DC2626" if cv["rec"] in ("매도", "적극 매도", "매도 우위") else "#6B7280")
+            st.markdown(
+                f'<div class="card" style="border-left:4px solid {gap_col}">'
+                f'<div style="display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px">'
+                f'<span style="font-size:18px;font-weight:800;color:{rec_col}">{cv["rec"]}</span>'
+                f'<span style="font-size:13px;color:#6B7280">애널리스트 {cv["count"]}명</span></div>'
+                f'<div style="margin-top:8px;font-size:14px;color:#374151;line-height:1.9">'
+                f'평균 목표가 <b>{fmt_native(cv["target_mean"], market)}</b> '
+                f'(<span style="color:{gap_col};font-weight:700">{gap_str}</span> · {cv["gap_label"]})<br>'
+                f'최고 {fmt_native(cv["target_high"], market)} · 최저 {fmt_native(cv["target_low"], market)}</div>'
+                f'<div class="sub" style="margin-top:8px;line-height:1.6">{cv["interp"]}</div></div>',
+                unsafe_allow_html=True)
+            st.caption("출처: Yahoo Finance 애널리스트 집계. 참고용 정보입니다.")
+
+    fib = all_ind["fibonacci"]
+    with st.expander("📐 지지·저항 전체 · 피보나치"):
+        lc1, lc2 = st.columns(2)
+        with lc1:
+            st.markdown("**🟢 지지 (아래)**")
+            if levels["supports"]:
+                st.dataframe(pd.DataFrame([
+                    {"가격": fmt_native(s["price"], market), "거리": f"{s['dist_pct']:.1f}%", "근거": s["label"]}
+                    for s in levels["supports"]]), use_container_width=True, hide_index=True)
+            else:
+                st.caption("뚜렷한 지지 없음")
+        with lc2:
+            st.markdown("**🔴 저항 (위)**")
+            if levels["resistances"]:
+                st.dataframe(pd.DataFrame([
+                    {"가격": fmt_native(s["price"], market), "거리": f"+{s['dist_pct']:.1f}%", "근거": s["label"]}
+                    for s in levels["resistances"]]), use_container_width=True, hide_index=True)
+            else:
+                st.caption("뚜렷한 저항 없음")
+        if fib:
+            st.markdown("**피보나치 되돌림**")
+            st.dataframe(pd.DataFrame(
+                [{"레벨": k, "가격": fmt_native(v, market)} for k, v in fib["levels"].items()]),
+                use_container_width=True, hide_index=True)
 
 
 # ---------------------------------------------------------------------------
