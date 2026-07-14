@@ -16,6 +16,7 @@ Thumbs.db
 
 # 알림 런타임 상태 / 시크릿 (커밋 금지)
 data/alert_state.json
+data/halt_state.json
 data/kr_listing.json
 config/notify.json
 

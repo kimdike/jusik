@@ -1,0 +1,50 @@
+name: 사이드카·서킷브레이커 감지
+
+# 한국장(09:00~15:30 KST) 동안 5분마다 뉴스 속보를 확인해
+# 사이드카/서킷브레이커 '발동'이 감지되면 즉시 텔레그램으로 알립니다.
+# 공식 실시간 무료 API가 없어 뉴스 기반 감지이며, 몇 분 지연이 있을 수 있습니다.
+# 토큰/chat_id는 저장소 Secrets에서 읽습니다.
+
+on:
+  schedule:
+    # UTC 00:00~06:55 = KST 09:00~15:55, 월~금 (한국장 정규장)
+    - cron: "*/5 0-6 * * 1-5"
+  workflow_dispatch:            # 수동 실행 버튼
+
+permissions:
+  contents: read
+
+concurrency:
+  group: market-halt
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-alerts.txt
+
+      - name: 의존성 설치 (경량)
+        run: pip install -r requirements-alerts.txt
+
+      # 중복 알림 방지 상태(halt_state.json)를 실행 간 캐시로 유지 (롤링).
+      - name: 직전 상태 복원
+        uses: actions/cache@v4
+        with:
+          path: data/halt_state.json
+          key: halt-state-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            halt-state-
+
+      - name: 사이드카/서킷브레이커 점검 후 발송
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python alerts_run.py --halt

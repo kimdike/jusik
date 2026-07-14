@@ -22,6 +22,7 @@ WATCHLIST_FILE = _DATA / "watchlist.json"
 PORTFOLIO_FILE = _DATA / "portfolio.json"
 ALERTS_FILE = _DATA / "alerts.json"          # 사용자 설정 (목표가/손절가/신호알림)
 STATE_FILE = _DATA / "alert_state.json"      # 런타임 상태 (gitignore)
+HALT_STATE_FILE = _DATA / "halt_state.json"  # 사이드카/CB 중복 알림 방지 상태 (gitignore)
 
 
 def _load(path: Path, default):
@@ -58,7 +59,12 @@ def _key(symbol: str, market: str) -> str:
 def _fmt_price(v: float, market: str) -> str:
     if v is None:
         return "-"
-    return f"${v:,.2f}" if market.upper() == "US" else f"{v:,.0f}원"
+    m = market.upper()
+    if m == "US":
+        return f"${v:,.2f}"
+    if m == "FX":            # 원/달러 환율 등 — 소수 2자리, 원 단위
+        return f"{v:,.2f}원"
+    return f"{v:,.0f}원"
 
 
 def _monitored() -> dict:
@@ -392,6 +398,58 @@ def build_chart_briefing(symbols, send_telegram: bool = True, news_n: int = 3) -
                 except Exception:
                     pass
     return log
+
+
+def check_market_halt(send_telegram: bool = True,
+                      window_min: int = 30, cooldown_min: int = 40) -> list[str]:
+    """코스피/코스닥 사이드카·서킷브레이커 '발동'을 뉴스 속보로 감지해 즉시 알림.
+
+    공식 실시간 무료 API가 없어 뉴스(Google News RSS) 기반으로 감지한다.
+    - window_min: 이 시간(분) 내 발행된 기사만 '방금 발동'으로 인정(과거 설명기사 배제)
+    - cooldown_min: 같은 유형은 이 시간(분) 안에 재알림하지 않음(속보 도배 방지)
+    반환: 발송한 메시지 목록.
+    """
+    import time
+
+    from . import news as news_mod
+
+    state = _load(HALT_STATE_FILE, {})
+    last: dict = state.get("last", {})
+    now = time.time()
+    triggers = [
+        ("사이드카", "🟧 사이드카 발동"),
+        ("서킷브레이커", "🟥 서킷브레이커(CB) 발동"),
+    ]
+    msgs: list[str] = []
+    for kw, label in triggers:
+        # 최근 알림했으면 스킵 (같은 이벤트 도배 방지)
+        if last.get(kw) and now - float(last[kw]) < cooldown_min * 60:
+            continue
+        try:
+            items = news_mod.get_news(f"{kw} 발동", region="KR", limit=10)
+        except Exception:
+            continue
+        fresh = None
+        for it in items:
+            title = it.get("title", "")
+            ts = it.get("ts")
+            if kw not in title or "발동" not in title:
+                continue
+            if ts is None or (now - float(ts)) > window_min * 60:
+                continue  # 발행시각 불명 또는 오래된 기사 → 제외
+            fresh = it
+            break  # RSS는 최신순 → 첫 유효 기사 사용
+        if fresh:
+            text = f"⚠️ {label}\n📰 {fresh['title']}"
+            if fresh.get("link"):
+                text += f"\n{fresh['link']}"
+            msgs.append(text)
+            if send_telegram:
+                notify.send(text)
+            last[kw] = now
+    state["last"] = last
+    _save(HALT_STATE_FILE, state)
+    return msgs
 
 
 def _band_rank(band_key: str) -> int:

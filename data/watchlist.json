@@ -48,5 +48,15 @@
     "name": "금(KRX금현물)",
     "symbol": "411060",
     "market": "KR"
+  },
+  {
+    "name": "원/달러 환율",
+    "symbol": "KRW=X",
+    "market": "FX"
+  },
+  {
+    "name": "KODEX 미국달러선물",
+    "symbol": "261240",
+    "market": "KR"
   }
 ]

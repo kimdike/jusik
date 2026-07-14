@@ -39,6 +39,20 @@ def _fmt_date(pub: str) -> str:
     return pub[:16] if pub else ""
 
 
+def _parse_ts(pub: str) -> float | None:
+    """RSS pubDate -> epoch(초, UTC). 실패 시 None. (속보 최신성 판별용)"""
+    import calendar
+    for fmt in ("%a, %d %b %Y %H:%M:%S %Z", "%a, %d %b %Y %H:%M:%S %z"):
+        try:
+            dt = datetime.strptime(pub, fmt)
+            if dt.tzinfo is not None:
+                return dt.timestamp()
+            return calendar.timegm(dt.timetuple())   # GMT/naive → UTC 취급
+        except Exception:
+            continue
+    return None
+
+
 def get_news(query: str, region: str = "KR", limit: int = 8) -> list[dict]:
     """
     반환: [{"title", "source", "published", "link"}]
@@ -66,10 +80,12 @@ def get_news(query: str, region: str = "KR", limit: int = 8) -> list[dict]:
             headline, source = raw_title.rsplit(" - ", 1)
         else:
             headline, source = raw_title, (item.findtext("source") or "")
+        pub_raw = item.findtext("pubDate") or ""
         out.append({
             "title": headline.strip(),
             "source": source.strip(),
-            "published": _fmt_date(item.findtext("pubDate") or ""),
+            "published": _fmt_date(pub_raw),
+            "ts": _parse_ts(pub_raw),
             "link": (item.findtext("link") or "").strip(),
         })
     return out

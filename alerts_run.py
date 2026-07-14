@@ -44,7 +44,18 @@ def main() -> None:
     ap.add_argument("--brief", action="store_true", help="워치리스트 아침 브리핑 발송")
     ap.add_argument("--discover", action="store_true", help="종목 발굴 스캔 → discovery.json 저장")
     ap.add_argument("--wrap", action="store_true", help="오늘의 증시 하루 정리 발송")
+    ap.add_argument("--halt", action="store_true", help="사이드카/서킷브레이커 발동 점검(뉴스 속보)")
     args = ap.parse_args()
+
+    if args.halt:
+        msgs = alerts.check_market_halt(send_telegram=True)
+        if msgs:
+            print(f"[{_ts()}] 시장 중단 알림 {len(msgs)}건 발송:")
+            for m in msgs:
+                print("  -", m.replace("\n", " / "))
+        else:
+            print(f"[{_ts()}] 사이드카/CB 발동 없음")
+        return
 
     if args.test:
         ok, info = notify.send("🔔 [테스트] 주식 대시보드 알림이 정상 연결됐어요!")
