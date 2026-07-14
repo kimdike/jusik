@@ -245,8 +245,10 @@ def build_briefing(send_telegram: bool = True) -> str:
         df = prices.get_ohlcv(sym, mkt, "6mo")
         if df is None or df.empty:
             continue
-        cur = float(df["close"].iloc[-1])
-        prev = float(df["close"].iloc[-2]) if len(df) >= 2 else cur
+        # 실시간 체결가 + 전일 종가 우선(일봉 지연/건너뜀 보정), 실패 시 봉 종가 폴백
+        lq = prices.get_live_quote(sym, mkt)
+        cur = lq.get("price") or float(df["close"].iloc[-1])
+        prev = lq.get("prev_close") or (float(df["close"].iloc[-2]) if len(df) >= 2 else cur)
         chg = (cur - prev) / prev * 100 if prev else 0.0
         res = signals.evaluate(df)
         up = res.get("up_pct")
