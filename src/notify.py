@@ -66,8 +66,9 @@ def resolve_chat_id() -> str | None:
     )
 
 
-def send(text: str, chat_id: str | None = None, token: str | None = None) -> tuple[bool, str]:
-    """텔레그램 메시지 발송. (성공여부, 메시지) 반환."""
+def send(text: str, chat_id: str | None = None, token: str | None = None,
+         parse_mode: str | None = None) -> tuple[bool, str]:
+    """텔레그램 메시지 발송. (성공여부, 메시지) 반환. parse_mode: 'HTML'/'MarkdownV2'."""
     token = token or resolve_token()
     chat_id = chat_id or resolve_chat_id()
     if not token:
@@ -75,9 +76,12 @@ def send(text: str, chat_id: str | None = None, token: str | None = None) -> tup
     if not chat_id:
         return False, "chat_id 를 찾을 수 없습니다."
     try:
+        payload = {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
         resp = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
+            json=payload,
             timeout=10,
         )
         if resp.status_code == 200 and resp.json().get("ok"):
@@ -88,8 +92,9 @@ def send(text: str, chat_id: str | None = None, token: str | None = None) -> tup
 
 
 def send_photo(photo_path: str, caption: str = "",
-               chat_id: str | None = None, token: str | None = None) -> tuple[bool, str]:
-    """이미지 파일을 캡션과 함께 전송 (텔레그램 sendPhoto). (성공여부, 메시지)."""
+               chat_id: str | None = None, token: str | None = None,
+               parse_mode: str | None = None) -> tuple[bool, str]:
+    """이미지 파일을 캡션과 함께 전송 (텔레그램 sendPhoto). (성공여부, 메시지). parse_mode: 'HTML' 등."""
     token = token or resolve_token()
     chat_id = chat_id or resolve_chat_id()
     if not token:
@@ -97,10 +102,13 @@ def send_photo(photo_path: str, caption: str = "",
     if not chat_id:
         return False, "chat_id 를 찾을 수 없습니다."
     try:
+        data = {"chat_id": chat_id, "caption": caption[:1024]}
+        if parse_mode:
+            data["parse_mode"] = parse_mode
         with open(photo_path, "rb") as f:
             resp = requests.post(
                 f"https://api.telegram.org/bot{token}/sendPhoto",
-                data={"chat_id": chat_id, "caption": caption[:1024]},
+                data=data,
                 files={"photo": f},
                 timeout=30,
             )

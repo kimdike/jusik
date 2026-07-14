@@ -193,6 +193,29 @@ def _news_one(name: str, mkt: str) -> str:
         return ""
 
 
+def _news_multi(name: str, mkt: str, limit: int = 3) -> list[str]:
+    """관련 뉴스 여러 건 — 제목이 링크로 걸린 HTML 줄 목록. 실패 시 빈 목록.
+    (HTML parse_mode 로 발송해야 링크가 클릭됨)"""
+    import html
+    try:
+        from . import news as news_mod
+        region = "US" if mkt.upper() == "US" else "KR"
+        items = news_mod.get_news(name, region=region, limit=limit)
+        out = []
+        for it in items[:limit]:
+            t = (it.get("title") or "").strip()
+            link = (it.get("link") or "").strip()
+            if not t:
+                continue
+            if link:
+                out.append(f'📰 <a href="{html.escape(link, quote=True)}">{html.escape(t)}</a>')
+            else:
+                out.append(f"📰 {html.escape(t)}")
+        return out
+    except Exception:
+        return []
+
+
 def _alert_caption(name: str, sym: str, mkt: str, df, cfg: dict, up,
                    triggers: list[tuple[str, str]], sig_changed: bool) -> str:
     """간결 알림 캡션: 결론 먼저 → 가격 요약 표 → (신호변화 시) 뉴스 1줄."""
