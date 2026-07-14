@@ -230,6 +230,11 @@ def fetch_price(symbol: str, market: str):
     return prices.get_current_price(symbol, market)
 
 
+@st.cache_data(ttl=60, show_spinner=False)
+def fetch_live_quote(symbol: str, market: str) -> dict:
+    return prices.get_live_quote(symbol, market)
+
+
 @st.cache_data(ttl=600, show_spinner=False)
 def fetch_fx() -> float:
     return prices.get_fx_usdkrw() or 1380.0
@@ -774,6 +779,14 @@ def page_analysis():
 
     # 등락률(전일 대비) · 기간 수익률
     prev = float(df["close"].iloc[-2]) if len(df) >= 2 else cur
+    # yfinance 일봉 종가는 장중 지연·전일값으로 밀리므로 실시간 마지막 체결가로 덮어씀.
+    # (일봉만 해당 — 주/월봉은 그대로 봉 종가 사용)
+    if timeframe == "D":
+        live = fetch_live_quote(symbol, market)
+        if live.get("price"):
+            cur = float(live["price"])
+            if live.get("prev_close"):
+                prev = float(live["prev_close"])
     chg = (cur - prev) / prev * 100 if prev else 0.0
     first = float(df["close"].iloc[0]) if len(df) else cur
     pr = (cur - first) / first * 100 if first else 0.0
@@ -1147,7 +1160,11 @@ def page_alerts():
     else:
         existing = load_json(ALERTS_FILE, {})
         with st.spinner("현재가 불러오는 중..."):
-            cur_map = {k: fetch_price(k.split("|", 1)[0], k.split("|", 1)[1]) for k in monitored}
+            cur_map = {
+                k: (fetch_live_quote(k.split("|", 1)[0], k.split("|", 1)[1]).get("price")
+                    or fetch_price(k.split("|", 1)[0], k.split("|", 1)[1]))
+                for k in monitored
+            }
 
         for key, name in monitored.items():
             sym, mkt = key.split("|", 1)

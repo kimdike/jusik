@@ -149,6 +149,47 @@ def get_current_price(symbol: str, market: str) -> float | None:
         return None
 
 
+def get_live_quote(symbol: str, market: str) -> dict:
+    """실시간(가까운) 현재가 + 전일 종가.
+
+    yfinance 일봉 종가는 장중 지연·전일값으로 밀리므로, 마지막 체결가를 우선 사용한다.
+    반환: {"price": float|None, "prev_close": float|None}
+    """
+    market = market.upper()
+    try:
+        if market == "COIN":
+            resp = requests.get(
+                f"{UPBIT_BASE}/ticker",
+                params={"markets": _coin_market(symbol)},
+                timeout=_TIMEOUT,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if data:
+                d = data[0]
+                return {
+                    "price": float(d["trade_price"]),
+                    "prev_close": float(d.get("prev_closing_price") or 0) or None,
+                }
+            return {"price": None, "prev_close": None}
+        tickers = _kr_candidates(symbol) if market == "KR" else [symbol.strip().upper()]
+        for tk in tickers:
+            try:
+                fi = yf.Ticker(tk).fast_info
+                price = fi.get("last_price") or fi.get("lastPrice")
+                prev = fi.get("previous_close") or fi.get("previousClose")
+            except Exception:
+                continue
+            if price:
+                return {
+                    "price": float(price),
+                    "prev_close": float(prev) if prev else None,
+                }
+    except Exception:
+        pass
+    return {"price": None, "prev_close": None}
+
+
 def get_fx_usdkrw() -> float | None:
     """원/달러 환율 (미국 주식을 원화로 환산할 때 사용)."""
     try:

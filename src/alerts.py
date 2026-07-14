@@ -86,7 +86,8 @@ def run_once(send_telegram: bool = True) -> list[str]:
         sym, mkt, name = info["symbol"], info["market"], info["name"]
         cfg = alerts_cfg.get(k, {})
         df = prices.get_ohlcv(sym, mkt, "1y")
-        cur = prices.get_current_price(sym, mkt)
+        # 실시간 체결가 우선(주식 일봉 지연 구간 보정), 실패 시 종가 폴백
+        cur = prices.get_live_quote(sym, mkt).get("price") or prices.get_current_price(sym, mkt)
         if df.empty or cur is None:
             continue
 
