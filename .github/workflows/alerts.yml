@@ -5,7 +5,7 @@ name: 주식 자동 알림
 
 on:
   schedule:
-    - cron: "*/30 * * * *"      # 30분마다 (UTC 기준 — 한국장·미국장 모두 커버)
+    - cron: "*/5 * * * *"       # 5분마다 (UTC 기준 — 한국장·미국장·코인 24시간 커버)
   workflow_dispatch:            # 수동 실행 버튼 (테스트용)
     inputs:
       test:

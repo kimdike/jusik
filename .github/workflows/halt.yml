@@ -43,8 +43,9 @@ jobs:
           restore-keys: |
             halt-state-
 
+      # 시장 전체 정보라 '그룹'으로 발송 (개인 알림과 분리 — 그룹용 봇/채팅 Secret 사용)
       - name: 사이드카/서킷브레이커 점검 후 발송
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_GROUP_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_GROUP_CHAT_ID }}
         run: python alerts_run.py --halt
