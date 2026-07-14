@@ -149,11 +149,12 @@ def _opinion(up) -> tuple[str, str]:
     return "🟡", "관망"
 
 
-def _price_rows(mkt: str, df, cfg: dict) -> list[str]:
-    """가격 요약 표(현재/지지/저항/목표/매수/손절) — 아이콘+거리%."""
+def _price_rows(mkt: str, df, cfg: dict, cur: float | None = None) -> list[str]:
+    """가격 요약 표(현재/지지/저항/목표/매수/손절) — 아이콘+거리%.
+    cur 를 주면 그 값(실시간 체결가)을 '현재'와 거리% 기준으로 사용."""
     from . import indicators as ind
     from . import levels as lv
-    cur = float(df["close"].iloc[-1])
+    cur = cur if cur is not None else float(df["close"].iloc[-1])
 
     def f(v):
         return _fmt_price(v, mkt)
@@ -301,6 +302,96 @@ def build_briefing(send_telegram: bool = True) -> str:
     if send_telegram:
         notify.send(text)
     return text
+
+
+def build_chart_briefing(symbols, send_telegram: bool = True, news_n: int = 3) -> list[str]:
+    """지정 종목 각각을 '차트 + 풍부한 캡션(가격요약 + 관련뉴스 링크)'으로 발송.
+
+    symbols: [(sym, mkt, name), ...]  (예: [("000660","KR","SK하이닉스")])
+    - 현재가/등락률은 실시간 체결가 기준(get_live_quote), 일봉 폴백
+    - 캡션이 1024자를 넘으면 뉴스를 별도 텍스트 메시지로 자동 분리(HTML 링크)
+    반환: 처리 로그 목록.
+    """
+    import html as _html
+    import tempfile
+    from datetime import datetime, timedelta, timezone
+
+    from . import chartimg
+
+    alerts_cfg = _load(ALERTS_FILE, {})
+    kst = datetime.now(timezone(timedelta(hours=9)))
+    log: list[str] = []
+
+    # --- 헤더 요약 ---
+    head = [f"🌅 브리핑  ({kst:%Y-%m-%d %H:%M} KST)", ""]
+    metas = []
+    for sym, mkt, name in symbols:
+        df = prices.get_ohlcv(sym, mkt, "6mo")
+        if df is None or df.empty:
+            head.append(f"• {name}({sym})  데이터 없음")
+            metas.append((sym, mkt, name, None, None))
+            continue
+        lq = prices.get_live_quote(sym, mkt)
+        cur = lq.get("price") or float(df["close"].iloc[-1])
+        prev = lq.get("prev_close") or (float(df["close"].iloc[-2]) if len(df) >= 2 else cur)
+        chg = (cur - prev) / prev * 100 if prev else 0.0
+        up = signals.evaluate(df).get("up_pct")
+        _, band = band_of(up)
+        arrow = "🔺" if chg > 0 else ("🔻" if chg < 0 else "▪️")
+        up_s = f"{up:.0f}({band})" if up is not None else "-"
+        head.append(f"• {name}({sym})  {_fmt_price(cur, mkt)} {arrow}{chg:+.1f}%  · 신호 {up_s}")
+        metas.append((sym, mkt, name, (cur, chg, up), df))
+    head += ["", "※ 보조 지표 요약 · 투자 판단은 본인 책임"]
+    if send_telegram:
+        notify.send("\n".join(head))
+    log.append("헤더 발송")
+
+    # --- 종목별 차트 + 캡션 ---
+    for sym, mkt, name, meta, df in metas:
+        if meta is None:
+            continue
+        cur, chg, up = meta
+        cfg = alerts_cfg.get(_key(sym, mkt), {})
+        oe, ol = _opinion(up)
+        up_s = f"{up:.0f}" if up is not None else "-"
+        arrow = "🔺" if chg > 0 else ("🔻" if chg < 0 else "▪️")
+        lines = [
+            f"{oe} {ol} ({up_s}/100)",
+            f"{_html.escape(name)} ({sym})  {arrow}{chg:+.1f}%",
+            _DIV, "💰 가격 요약",
+            *_price_rows(mkt, df, cfg, cur=cur),
+        ]
+        news = _news_multi(name, mkt, limit=news_n)
+        base_cap = "\n".join(lines)
+        full_cap = "\n".join(lines + ([_DIV] + news if news else []))
+        if not send_telegram:
+            log.append(f"{name}: (미발송) 캡션 {len(full_cap)}자")
+            continue
+        path = None
+        try:
+            fd, path = tempfile.mkstemp(suffix=".png", prefix="cbrief_")
+            os.close(fd)
+            out = chartimg.render_chart(sym, mkt, name, path,
+                                        target=cfg.get("target"), entry=cfg.get("entry"), df=df)
+            if out and len(full_cap) <= 1024:
+                notify.send_photo(out, caption=full_cap, parse_mode="HTML")
+                log.append(f"{name}: 차트+뉴스 인라인")
+            elif out:
+                notify.send_photo(out, caption=base_cap, parse_mode="HTML")
+                if news:
+                    notify.send("\n".join([f"📰 {_html.escape(name)} 관련 뉴스", ""] + news),
+                                parse_mode="HTML")
+                log.append(f"{name}: 차트 + 뉴스 별도")
+            else:
+                notify.send(full_cap, parse_mode="HTML")
+                log.append(f"{name}: 텍스트 폴백")
+        finally:
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except Exception:
+                    pass
+    return log
 
 
 def _band_rank(band_key: str) -> int:
