@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 import time
 
@@ -41,7 +42,12 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="주식 알림 러너")
     ap.add_argument("--loop", type=int, metavar="MIN", help="N분마다 반복 실행")
     ap.add_argument("--test", action="store_true", help="텔레그램 테스트 메시지 발송")
-    ap.add_argument("--brief", action="store_true", help="워치리스트 아침 브리핑 발송")
+    ap.add_argument("--brief", nargs="?", const="pre", choices=["pre", "open", "hourly"],
+                    help="브리핑 발송: pre(장 전 08:30) / open(장 시작 30분) / hourly(정시 점검)")
+    ap.add_argument("--add", metavar="NAME", help="워치리스트에 종목 추가 (이름/티커로 검색)")
+    ap.add_argument("--market", metavar="KR|US|COIN", help="--add 시 시장 지정")
+    ap.add_argument("--remove", metavar="NAME", help="워치리스트에서 종목 제거")
+    ap.add_argument("--list", action="store_true", help="현재 워치리스트 보기")
     ap.add_argument("--discover", action="store_true", help="종목 발굴 스캔 → discovery.json 저장")
     ap.add_argument("--wrap", action="store_true", help="오늘의 증시 하루 정리 발송")
     ap.add_argument("--halt", action="store_true", help="사이드카/서킷브레이커 발동 점검(뉴스 속보)")
@@ -62,9 +68,25 @@ def main() -> None:
         print("테스트 발송:", "성공 ✅" if ok else f"실패 ❌ ({info})")
         return
 
+    if args.list or args.add or args.remove:
+        if args.add:
+            r = alerts.add_watch(args.add, market=args.market)
+            print(("✅ " if r["ok"] else "⚠️ ") + r["msg"])
+            if not r["ok"] and r["candidates"]:
+                print("후보:", ", ".join(f"{c['name']}({c['symbol']}/{c['market']})"
+                                        for c in r["candidates"][:5]))
+        if args.remove:
+            r = alerts.remove_watch(args.remove)
+            print(("✅ " if r["ok"] else "⚠️ ") + r["msg"])
+        wl = json.loads(alerts.WATCHLIST_FILE.read_text(encoding="utf-8"))
+        print(f"\n현재 워치리스트 {len(wl)}종목:")
+        for w in wl:
+            print(f"  • {w['name']} ({w['symbol']}/{w['market']})")
+        return
+
     if args.brief:
-        text = alerts.build_briefing(send_telegram=True)
-        print(f"[{_ts()}] 브리핑 발송:")
+        text = alerts.build_briefing(send_telegram=True, kind=args.brief)
+        print(f"[{_ts()}] 브리핑({args.brief}) 발송:")
         print(text)
         return
 

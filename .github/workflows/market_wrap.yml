@@ -4,7 +4,7 @@ name: 오늘의 증시 하루 정리
 
 on:
   schedule:
-    - cron: "40 6 * * 1-5"   # UTC 06:40 = KST 15:40 (한국 장 마감 직후, 평일)
+    - cron: "0 7 * * 1-5"   # UTC 07:00 = KST 16:00 (한국 장 마감 후, 평일)
   workflow_dispatch:
 
 permissions:

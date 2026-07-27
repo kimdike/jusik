@@ -1,11 +1,20 @@
 name: 아침 브리핑
 
-# 매일 장 시작 전(한국시간 아침) 워치리스트 전체 요약을 텔레그램으로 1회 발송.
+# 평일 아침 2회 발송:
+#   08:30 KST — 장 전 예고 (전일 종가 기준, 신호 강한 순)
+#   09:30 KST — 장 시작 30분 후 시황 (시초가 반영, 움직임 큰 순)
 
 on:
   schedule:
-    - cron: "0 23 * * 0-4"   # UTC 23:00 = KST 08:00 (월~금 아침; UTC 일~목)
-  workflow_dispatch:          # 수동 실행 버튼
+    - cron: "30 23 * * 0-4"   # UTC 23:30 = KST 08:30 (월~금 아침; UTC 일~목)
+    - cron: "30 0 * * 1-5"    # UTC 00:30 = KST 09:30 (장 시작 30분 후)
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: "브리핑 종류"
+        type: choice
+        options: [pre, open]
+        default: pre
 
 permissions:
   contents: read
@@ -26,8 +35,20 @@ jobs:
       - name: 의존성 설치 (경량)
         run: pip install -r requirements-alerts.txt
 
-      - name: 아침 브리핑 발송
+      # 어느 cron이 돌았는지로 브리핑 종류를 고른다 (수동 실행이면 입력값 사용)
+      - name: 브리핑 종류 결정
+        id: kind
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "kind=${{ inputs.kind }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event.schedule }}" = "30 0 * * 1-5" ]; then
+            echo "kind=open" >> "$GITHUB_OUTPUT"
+          else
+            echo "kind=pre" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 브리핑 발송
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python alerts_run.py --brief
+        run: python alerts_run.py --brief ${{ steps.kind.outputs.kind }}

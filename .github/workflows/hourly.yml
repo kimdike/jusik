@@ -1,0 +1,40 @@
+name: 정시 점검 (1시간마다)
+
+# 신호가 안 바뀌어도 1시간마다 워치리스트 전 종목 상태를 1통으로 보낸다.
+#   한국장  10:00~15:00 KST  (09:30 장 시작 브리핑, 16:00 하루정리와 겹치지 않게)
+#   미국장  23:00~06:00 KST
+# (신호 변경 즉시 알림은 alerts.yml 이 그대로 담당 — 이건 정기 스냅샷)
+
+on:
+  schedule:
+    - cron: "0 1-6,14-21 * * 1-5"   # UTC 01~06 = KST 10~15 / UTC 14~21 = KST 23~06
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hourly-brief
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-alerts.txt
+
+      - name: 의존성 설치 (경량)
+        run: pip install -r requirements-alerts.txt
+
+      - name: 정시 점검 발송
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python alerts_run.py --brief hourly

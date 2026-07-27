@@ -264,9 +264,29 @@ def _send_with_chart(sym: str, mkt: str, name: str, df, cfg: dict, caption: str)
     notify.send(caption)  # 차트 실패 시 텍스트만이라도
 
 
-def build_briefing(send_telegram: bool = True) -> str:
-    """워치리스트/보유 종목 전체를 신호 강한 순으로 요약한 '아침 브리핑' 텍스트.
-    각 종목: 현재가·전일대비·종합신호·(설정 시) 매수자리/목표가까지 거리."""
+def _kst_now():
+    from datetime import datetime, timedelta, timezone
+    return datetime.now(timezone(timedelta(hours=9)))
+
+
+# 브리핑 종류별 헤더/부제/정렬 기준
+#   pre    = 장 전(08:30) 예고        — 신호 강한 순
+#   open   = 장 시작 30분 후(09:30)   — 오늘 움직임 큰 순
+#   hourly = 정시 점검(매시)          — 오늘 움직임 큰 순
+_BRIEF_KINDS = {
+    "pre":    ("🌅 장 전 브리핑", "장 열기 전 상태 · 전일 종가 기준", "signal"),
+    "open":   ("🔔 장 시작 30분", "시초가 반영된 오늘 실제 흐름", "move"),
+    "hourly": ("⏱ 정시 점검", None, "move"),
+}
+
+
+def build_briefing(send_telegram: bool = True, kind: str = "pre") -> str:
+    """워치리스트/보유 종목 전체 요약 브리핑.
+
+    kind: 'pre'(장 전 08:30) / 'open'(장 시작 30분 09:30) / 'hourly'(정시 점검)
+    각 종목: 현재가·전일대비·(open이면 시가대비)·종합신호·매수 관심구간까지 거리.
+    """
+    title, subtitle, sort_by = _BRIEF_KINDS.get(kind, _BRIEF_KINDS["pre"])
     alerts_cfg = _load(ALERTS_FILE, {})
     monitored = _monitored()
     rows = []
@@ -280,18 +300,36 @@ def build_briefing(send_telegram: bool = True) -> str:
         cur = lq.get("price") or float(df["close"].iloc[-1])
         prev = lq.get("prev_close") or (float(df["close"].iloc[-2]) if len(df) >= 2 else cur)
         chg = (cur - prev) / prev * 100 if prev else 0.0
-        res = signals.evaluate(df)
-        up = res.get("up_pct")
-        rows.append((up if up is not None else -1, name, mkt, cur, chg, up, alerts_cfg.get(k, {})))
+        up = signals.evaluate(df).get("up_pct")
+        # 시가 대비 (open 브리핑에서만 표시) — 마지막 봉의 시가
+        op = None
+        if kind == "open":
+            try:
+                o = float(df["open"].iloc[-1])
+                op = (cur - o) / o * 100 if o else None
+            except Exception:
+                op = None
+        rows.append({"name": name, "mkt": mkt, "cur": cur, "chg": chg, "up": up,
+                     "open_pct": op, "cfg": alerts_cfg.get(k, {}), "df": df})
 
-    rows.sort(key=lambda r: r[0], reverse=True)  # 신호 강한 순
+    if sort_by == "move":
+        rows.sort(key=lambda r: abs(r["chg"]), reverse=True)      # 많이 움직인 순
+    else:
+        rows.sort(key=lambda r: (r["up"] if r["up"] is not None else -1), reverse=True)
 
-    lines = ["🌅 오늘의 워치리스트 브리핑", ""]
-    for _, name, mkt, cur, chg, up, cfg in rows:
+    kst = _kst_now()
+    head = f"{title}  ({kst:%m월 %d일 %H:%M} KST)"
+    lines = [head] + ([subtitle, ""] if subtitle else [""])
+
+    for r in rows:
+        name, mkt, cur, chg, up, cfg = r["name"], r["mkt"], r["cur"], r["chg"], r["up"], r["cfg"]
         _, band = band_of(up)
         arrow = "🔺" if chg > 0 else ("🔻" if chg < 0 else "▪️")
-        head = f"{name}  {_fmt_price(cur, mkt)} {arrow}{chg:+.1f}%  · 신호 {up:.0f}({band})" if up is not None \
-            else f"{name}  {_fmt_price(cur, mkt)} {arrow}{chg:+.1f}%  · 신호 -"
+        up_s = f"{up:.0f}({band})" if up is not None else "-"
+        line = f"• {name}  {_fmt_price(cur, mkt)} {arrow}{chg:+.1f}%  · 신호 {up_s}"
+        if r["open_pct"] is not None:
+            line += f"\n   시가대비 {r['open_pct']:+.1f}%"
+
         extras = []
         if cfg.get("entry"):
             d = (cfg["entry"] - cur) / cur * 100 if cur else 0
@@ -299,15 +337,56 @@ def build_briefing(send_telegram: bool = True) -> str:
         if cfg.get("target"):
             d = (cfg["target"] - cur) / cur * 100 if cur else 0
             extras.append(f"목표가까지 {d:+.1f}%")
-        line = "• " + head + (("\n   " + " · ".join(extras)) if extras else "")
+        if extras:
+            line += "\n   " + " · ".join(extras)
         lines.append(line)
 
-    lines.append("")
-    lines.append("※ 보조 지표 요약 · 투자 판단은 본인 책임")
+    lines += ["", "※ 보조 지표 요약 · 투자 판단은 본인 책임"]
     text = "\n".join(lines)
     if send_telegram:
         notify.send(text)
     return text
+
+
+def add_watch(query: str, market: str | None = None, name: str | None = None) -> dict:
+    """이름/티커로 검색해 워치리스트에 추가. 브리핑·알림 대상에 바로 반영된다.
+
+    반환: {"ok": bool, "msg": str, "item": {...}|None, "candidates": [...]}
+    """
+    from . import search as search_mod
+    cands = search_mod.search_symbols(query, limit=8)
+    if market:
+        mk = market.strip().upper()
+        cands = [c for c in cands if c["market"] == mk] or cands
+    if not cands:
+        return {"ok": False, "msg": f"'{query}' 검색 결과 없음", "item": None, "candidates": []}
+
+    pick = cands[0]
+    item = {"name": name or pick["name"], "symbol": pick["symbol"], "market": pick["market"]}
+    wl = _load(WATCHLIST_FILE, [])
+    for w in wl:
+        if str(w.get("symbol")) == item["symbol"] and str(w.get("market")).upper() == item["market"]:
+            return {"ok": False, "msg": f"이미 있음: {w.get('name')}", "item": w, "candidates": cands}
+    wl.append(item)
+    _save(WATCHLIST_FILE, wl)
+    return {"ok": True, "msg": f"추가됨: {item['name']} ({item['symbol']}/{item['market']})",
+            "item": item, "candidates": cands}
+
+
+def remove_watch(query: str) -> dict:
+    """이름 또는 티커로 워치리스트에서 제거."""
+    q = (query or "").strip().lower()
+    wl = _load(WATCHLIST_FILE, [])
+    keep, gone = [], []
+    for w in wl:
+        if q and (q == str(w.get("symbol", "")).lower() or q in str(w.get("name", "")).lower()):
+            gone.append(w)
+        else:
+            keep.append(w)
+    if not gone:
+        return {"ok": False, "msg": f"'{query}' 워치리스트에 없음", "removed": []}
+    _save(WATCHLIST_FILE, keep)
+    return {"ok": True, "msg": "제거됨: " + ", ".join(f"{g.get('name')}" for g in gone), "removed": gone}
 
 
 def build_chart_briefing(symbols, send_telegram: bool = True, news_n: int = 3) -> list[str]:
