@@ -10,6 +10,11 @@ on:
     # UTC 00:00~06:55 = KST 09:00~15:55, 월~금 (한국장 정규장)
     - cron: "*/5 0-6 * * 1-5"
   workflow_dispatch:            # 수동 실행 버튼
+    inputs:
+      test:
+        description: "그룹방 연결 확인용 테스트 메시지 발송"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -42,6 +47,14 @@ jobs:
           key: halt-state-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
             halt-state-
+
+      # 그룹방 연결 확인 — 발동이 드물어 평소엔 아무것도 안 가므로, 수동으로 도달 여부를 확인한다
+      - name: 테스트 메시지 (수동 실행 시)
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.test }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_GROUP_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_GROUP_CHAT_ID }}
+        run: python alerts_run.py --test
 
       # 시장 전체 정보라 '그룹'으로 발송 (개인 알림과 분리 — 그룹용 봇/채팅 Secret 사용)
       - name: 사이드카/서킷브레이커 점검 후 발송
