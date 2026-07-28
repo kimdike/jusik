@@ -110,9 +110,14 @@ export default {
     );
   },
 
-  // 브라우저로 열면 스케줄 확인. ?run=alerts.yml 로 수동 실행.
+  // 기본 배포는 workers_dev = false 라 이 핸들러에 닿을 주소가 없다.
+  // 나중에 주소를 열더라도 수동 실행이 무인증으로 뚫리지 않게 시크릿을 요구한다.
+  // (ADMIN_KEY 시크릿을 등록하지 않으면 수동 실행은 비활성)
   async fetch(req, env) {
     const url = new URL(req.url);
+    if (!env.ADMIN_KEY || url.searchParams.get("key") !== env.ADMIN_KEY) {
+      return new Response("not found", { status: 404 });
+    }
     const run = url.searchParams.get("run");
     if (run) {
       const job = SCHEDULE.find((j) => j.file === run);

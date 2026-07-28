@@ -22,3 +22,6 @@ config/notify.json
 
 # 개인 보유종목 — 공개 레포에 올리지 않음 (로컬에서만 관리)
 data/portfolio.json
+
+# wrangler 로컬 캐시 (계정 정보 포함 — 커밋 금지)
+.wrangler/
