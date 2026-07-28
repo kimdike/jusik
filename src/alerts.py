@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 
+from . import entry as entry_mod
 from . import notify, prices, signals
 
 _PROJECT = Path(__file__).resolve().parent.parent
@@ -115,26 +116,44 @@ def run_once(send_telegram: bool = True) -> list[str]:
                 triggers.append(("🔔", f"신호 변경 → {arrow} {band_label}"))
                 cur_msgs.append(f"🔔 신호변경 {name}({sym}) → {band_label}")
 
-        # --- A2: 목표가 / 매수자리 / 손절가 (크로싱) ---
+        # --- A2: 목표가 / 손절가 (사용자가 정한 값 크로싱) ---
         prev_price = prev.get("price")
-        target, entry, stop = cfg.get("target"), cfg.get("entry"), cfg.get("stop")
+        target, user_entry, stop = cfg.get("target"), cfg.get("entry"), cfg.get("stop")
         if not first_seen and prev_price is not None:
             if target and prev_price < target <= cur:
                 triggers.append(("🎯", "목표가 도달"))
                 cur_msgs.append(f"🎯 목표가 {name}({sym}) {_fmt_price(target, mkt)}")
-            if entry and prev_price > entry >= cur:
-                triggers.append(("🟢", "매수 자리"))
-                cur_msgs.append(f"🟢 매수자리 {name}({sym}) {_fmt_price(entry, mkt)}")
             if stop and prev_price > stop >= cur:
                 triggers.append(("🛑", "손절가"))
                 cur_msgs.append(f"🛑 손절가 {name}({sym}) {_fmt_price(stop, mkt)}")
 
-        state[k] = {"band": band_key, "price": cur}
+        # --- A3: 매수 관심구간 ---
+        # 사용자가 entry 를 직접 정해뒀으면 그 값 크로싱을 그대로 쓰고,
+        # 아니면 지지 합류·거래량·검증횟수·ATR·추세로 매번 다시 계산한 구간을 쓴다.
+        zone = None
+        now_in_zone = False
+        if user_entry:
+            if not first_seen and prev_price is not None and prev_price > user_entry >= cur:
+                triggers.append(("🟢", "매수 자리"))
+                cur_msgs.append(f"🟢 매수자리 {name}({sym}) {_fmt_price(user_entry, mkt)}")
+        else:
+            zone = entry_mod.compute_entry_zone(df, cur)
+            now_in_zone = entry_mod.in_zone(zone, cur)
+            # 구간에 '막 들어온' 순간 + 단기 과매도일 때만 1회 (구간 안에 머무는 동안 도배 방지)
+            if (now_in_zone and not prev.get("in_zone") and not first_seen
+                    and entry_mod.is_oversold(df)):
+                triggers.append(("🟢", f"매수 관심구간 진입 ({zone['score']}점)"))
+                cur_msgs.append(
+                    f"🟢 매수구간 {name}({sym}) "
+                    f"{_fmt_price(zone['low'], mkt)}~{_fmt_price(zone['high'], mkt)}"
+                )
+
+        state[k] = {"band": band_key, "price": cur, "in_zone": now_in_zone}
 
         if triggers:
             messages.extend(cur_msgs)
             if send_telegram:
-                cap = _alert_caption(name, sym, mkt, df, cfg, up, triggers, sig_changed)
+                cap = _alert_caption(name, sym, mkt, df, cfg, up, triggers, sig_changed, zone)
                 _send_with_chart(sym, mkt, name, df, cfg, cap)
 
     _save(STATE_FILE, state)
@@ -224,13 +243,16 @@ def _news_multi(name: str, mkt: str, limit: int = 3) -> list[str]:
 
 
 def _alert_caption(name: str, sym: str, mkt: str, df, cfg: dict, up,
-                   triggers: list[tuple[str, str]], sig_changed: bool) -> str:
-    """간결 알림 캡션: 결론 먼저 → 가격 요약 표 → (신호변화 시) 뉴스 1줄."""
+                   triggers: list[tuple[str, str]], sig_changed: bool,
+                   zone: dict | None = None) -> str:
+    """간결 알림 캡션: 결론 먼저 → 가격 요약 표 → 매수 관심구간 → (신호변화 시) 뉴스 1줄."""
     hdr = " · ".join(f"{e} {l}" for e, l in triggers)
     oe, ol = _opinion(up)
     up_s = f"{up:.0f}" if up is not None else "-"
     lines = [hdr, f"{name} ({sym})", "", f"{oe} {ol} ({up_s}/100)",
              _DIV, "💰 가격 요약"] + _price_rows(mkt, df, cfg)
+    if zone and zone.get("ok"):
+        lines += [_DIV] + entry_mod.format_zone(zone, lambda v: _fmt_price(v, mkt))
     if sig_changed:
         nb = _news_one(name, mkt)
         if nb:
@@ -292,7 +314,8 @@ def build_briefing(send_telegram: bool = True, kind: str = "pre") -> str:
     rows = []
     for k, info in monitored.items():
         sym, mkt, name = info["symbol"], info["market"], info["name"]
-        df = prices.get_ohlcv(sym, mkt, "6mo")
+        # 1y — 매수구간 추세 필터(200일선)를 쓰려면 6개월로는 봉이 모자람
+        df = prices.get_ohlcv(sym, mkt, "1y")
         if df is None or df.empty:
             continue
         # 실시간 체결가 + 전일 종가 우선(일봉 지연/건너뜀 보정), 실패 시 봉 종가 폴백
@@ -334,6 +357,13 @@ def build_briefing(send_telegram: bool = True, kind: str = "pre") -> str:
         if cfg.get("entry"):
             d = (cfg["entry"] - cur) / cur * 100 if cur else 0
             extras.append(f"매수자리까지 {d:+.1f}%")
+        else:
+            z = entry_mod.compute_entry_zone(r["df"], cur)   # 자동 산출 매수 관심구간
+            if z.get("ok"):
+                extras.append(
+                    f"🟢 매수구간 {_fmt_price(z['low'], mkt)}~{_fmt_price(z['high'], mkt)}"
+                    f" ({z['dist_pct']:+.1f}%, {z['score']}점)"
+                )
         if cfg.get("target"):
             d = (cfg["target"] - cur) / cur * 100 if cur else 0
             extras.append(f"목표가까지 {d:+.1f}%")

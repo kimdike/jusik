@@ -118,7 +118,7 @@ jusik/
 
 그 외 아이디어:
 - [x] 종목 스캐너 ✅ 2026-06-28 · [x] 종목 비교 ✅ · [x] 타임프레임(일/주/월) ✅ 2026-07 · [x] 종목 발굴 ✅ · [x] 하루정리 ✅
-- [ ] **매수자리 자동 갱신** — 현재 시세 이동 시 stale해짐(수동/요청 기반). 브리핑·발굴 크론에서 주기적으로 지지선 재계산해 alerts.json 갱신하면 좋음
+- [x] **매수자리 자동 갱신** ✅ 2026-07-28 — 고정값 대신 매 점검마다 재계산하는 점수제 구간(src/entry.py). 아래 '매수 관심구간' 항목 참고
 - [ ] 뉴스 감성분석 고도화(현재는 제목 키워드 기반 간이 추정)
 - [ ] 워치리스트/발굴 유니버스 확대(코스피200·S&P500 풀), 투자자별 수급(유료 데이터)
 - [ ] 다크모드, 거래량 보조지표 토글
@@ -140,7 +140,9 @@ jusik/
 - **시크릿**: 텔레그램 토큰은 절대 커밋 안 함(.gitignore: config/notify.json, alert_state.json, kr_listing.json).
 - **검증 방식**: `streamlit.testing.v1.AppTest`로 페이지 렌더/예외 스모크 후 커밋. (PYTHONIOENCODING=utf-8)
 - **매수자리 stale 주의**: alerts.json 매수자리는 설정 당시 값 고정 → 시세 이동하면 안 맞음(현재가보다 위로 갈 수도). "매수자리 갱신" 요청 시 지지선 재계산해 덮어씀. (자동화는 로드맵)
-- **크론 실행 불규칙**: GitHub 무료 스케줄러라 알림(30분 크론)이 실제론 30분~1시간+ 들쭉날쭉·가끔 지연. 누락은 안 됨. alerts_run은 발송 성공여부와 무관하게 "발송" 출력(실전송은 notify가 API 200 확인).
+- **크론 실행 불규칙 — 누락됨(2026-07-28 정정)**: alerts.yml은 `*/5`인데 실제 실행 기록은 1~4시간 간격(예: 07-27 00:12→04:04→07:46→10:57). 전부 success이므로 실패가 아니라 **GitHub이 스케줄 실행을 조용히 버리는 것**. 무료 러너의 고빈도 cron은 best-effort. 이전 기록의 "누락은 안 됨"은 오판. → 즉시성 필요하면 외부 스케줄러(Cloudflare Workers cron 등)로 이관 필요. alerts_run은 발송 성공여부와 무관하게 "발송" 출력(실전송은 notify가 API 200 확인).
+- **매수 관심구간(src/entry.py, 2026-07-28)**: 고정 entry 값은 시세 이동 시 무의미해지고, 하락추세 종목에도 자리를 찍어주는 문제가 있었음. 대체 방식 = 합류(40)+거래량프로파일(30)+접촉/반등 검증(20)+추세(10) 점수제. 200일선(부족 시 120일선) 아래면 산출 자체를 거부하고 사유 반환. 60점 미만 미표시. 폭=0.5×ATR, 손절=구간하단−1.5×ATR, 손익비 자동. 알림은 '구간 진입 + RSI(2) 과매도'일 때 1회(state의 in_zone 플래그로 도배 방지). cfg에 entry가 있으면 수동값 우선.
+- **알림 주기(2026-07-28 개편)**: 브리핑 08:30(pre)/09:30(open) 2회 분리(같은 briefing.yml에서 `github.event.schedule`로 분기), 정시 점검 신설(hourly.yml, 평일 KST 10~15시·23~06시), 하루정리 15:40→16:00. 워치리스트 CLI: `alerts_run.py --add/--remove/--list`.
 - **push 시 rebase 필요**: 발굴 크론(discovery.yml)이 discovery.json을 자동 커밋 → 로컬 push 전 `git pull --rebase origin main` 습관화(안 하면 non-fast-forward).
 - **게임 임시 링크**: `~/Desktop/fable_game_mvp`의 게임 4종(CORE BREAKER/ScrewPuzzle3D/Match3/FingerLaser). 정적 웹이라 `python nocache_server.py 8899`(루트) + cloudflared 퀵터널로 임시 공개(PC/세션 꺼지면 죽음). 영구는 GitHub Pages(로드맵). cloudflared/gh 경로: `~/AppData/Local/Microsoft/WinGet/Packages/...`.
 - **텔레그램 봇 운영**: 이 프로젝트는 텔레그램으로 사용자와 대화하며 요청받아 개발/분석하는 흐름. 알림·브리핑·하루정리·차트이미지 발송 및 분석 결과 전달에 사용. 봇/chat_id는 Claude 플러그인 것 재사용(로컬 ~/.claude/channels/telegram + GitHub Secrets).
