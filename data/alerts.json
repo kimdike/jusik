@@ -1,34 +1,26 @@
 {
   "005930|KR": {
-    "signal_alert": true,
-    "entry": 282981.0
+    "signal_alert": true
   },
   "000660|KR": {
-    "signal_alert": true,
-    "entry": 2121978.0
+    "signal_alert": true
   },
   "066570|KR": {
-    "signal_alert": true,
-    "entry": 175300.0
+    "signal_alert": true
   },
   "BTC|COIN": {
-    "signal_alert": true,
-    "entry": 88770000.0
+    "signal_alert": true
   },
   "ETH|COIN": {
-    "signal_alert": true,
-    "entry": 2311266.0
+    "signal_alert": true
   },
   "DOGE|COIN": {
-    "signal_alert": true,
-    "entry": 106.0
+    "signal_alert": true
   },
   "SPY|US": {
-    "signal_alert": true,
-    "entry": 724.15
+    "signal_alert": true
   },
   "411060|KR": {
-    "signal_alert": true,
-    "entry": 27040.0
+    "signal_alert": true
   }
 }
