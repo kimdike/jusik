@@ -79,7 +79,8 @@ async function dispatch(env, file, inputs) {
     {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${env.GH_TOKEN}`,
+        // trim: secret put 에 붙여넣을 때 줄바꿈/공백이 섞여 들어오는 경우가 있다
+        Authorization: `Bearer ${(env.GH_TOKEN || "").trim()}`,
         Accept: "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "jusik-scheduler",
@@ -90,14 +91,45 @@ async function dispatch(env, file, inputs) {
   );
   if (res.status !== 204) {
     // 성공은 204 No Content
-    throw new Error(`${file} dispatch 실패: ${res.status} ${await res.text()}`);
+    const body = await res.text();
+    throw new Error(
+      `${file} dispatch 실패: ${res.status} ${res.statusText} · body=${body || "(빈 응답)"}`,
+    );
   }
+}
+
+/** 토큰이 살아 있고 저장소에 권한이 있는지 확인 (진단용). */
+async function diagnose(env) {
+  const t = env.GH_TOKEN || "";
+  console.log(
+    `토큰 점검: 길이=${t.length} 접두=${t.slice(0, 11)} ` +
+      `공백포함=${/\s/.test(t)} 따옴표포함=${/["']/.test(t)}`,
+  );
+  const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}`, {
+    headers: {
+      Authorization: `Bearer ${t.trim()}`,
+      Accept: "application/vnd.github+json",
+      "User-Agent": "jusik-scheduler",
+    },
+  });
+  const j = await res.text();
+  console.log(`GET /repos 응답: ${res.status} ${j.slice(0, 200)}`);
 }
 
 export default {
   async scheduled(event, env, ctx) {
-    const now = new Date(event.scheduledTime);
+    // scheduledTime 이 없으면 new Date(undefined) → Invalid Date → 모든 비교가 NaN 이 되어
+    // 아무것도 발화하지 않는다. 조용히 죽는 실패라 반드시 폴백을 둔다.
+    const ts = event && event.scheduledTime ? event.scheduledTime : Date.now();
+    const now = new Date(ts);
     const due = SCHEDULE.filter((j) => isDue(j, now));
+    console.log(
+      `tick ${now.toISOString()} · 대상 ${due.length}건` +
+        (due.length ? `: ${due.map((j) => j.file).join(", ")}` : "") +
+        (env.GH_TOKEN ? "" : " · ⚠️ GH_TOKEN 없음"),
+    );
+    // DIAG 시크릿이 있으면 매 tick 토큰 상태를 찍는다 (문제 해결 후 지우면 됨)
+    if (env.DIAG) ctx.waitUntil(diagnose(env).catch((e) => console.error(`진단 실패: ${e}`)));
     if (!due.length) return;
     ctx.waitUntil(
       Promise.all(

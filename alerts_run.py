@@ -44,6 +44,8 @@ def main() -> None:
     ap.add_argument("--test", action="store_true", help="텔레그램 테스트 메시지 발송")
     ap.add_argument("--brief", nargs="?", const="pre", choices=["pre", "open", "hourly"],
                     help="브리핑 발송: pre(장 전 08:30) / open(장 시작 30분) / hourly(정시 점검)")
+    ap.add_argument("--group-brief", action="store_true",
+                    help="단톡방 종목 브리핑 발송 (차트+가격요약+매수구간+뉴스)")
     ap.add_argument("--add", metavar="NAME", help="워치리스트에 종목 추가 (이름/티커로 검색)")
     ap.add_argument("--market", metavar="KR|US|COIN", help="--add 시 시장 지정")
     ap.add_argument("--remove", metavar="NAME", help="워치리스트에서 종목 제거")
@@ -82,6 +84,13 @@ def main() -> None:
         print(f"\n현재 워치리스트 {len(wl)}종목:")
         for w in wl:
             print(f"  • {w['name']} ({w['symbol']}/{w['market']})")
+        return
+
+    if args.group_brief:
+        log = alerts.build_group_briefing(send_telegram=True)
+        print(f"[{_ts()}] 단톡방 브리핑:")
+        for line in log:
+            print("  -", line)
         return
 
     if args.brief:

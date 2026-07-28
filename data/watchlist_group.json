@@ -1,0 +1,18 @@
+[
+  { "name": "삼성전자", "symbol": "005930", "market": "KR" },
+  { "name": "SK하이닉스", "symbol": "000660", "market": "KR" },
+  { "name": "LG전자", "symbol": "066570", "market": "KR" },
+  { "name": "LG에너지솔루션", "symbol": "373220", "market": "KR" },
+  { "name": "현대차", "symbol": "005380", "market": "KR" },
+  { "name": "NAVER", "symbol": "035420", "market": "KR" },
+  { "name": "NHN", "symbol": "181710", "market": "KR" },
+  { "name": "금(KRX금현물)", "symbol": "411060", "market": "KR" },
+  { "name": "테슬라", "symbol": "TSLA", "market": "US" },
+  { "name": "애플", "symbol": "AAPL", "market": "US" },
+  { "name": "메타", "symbol": "META", "market": "US" },
+  { "name": "엔비디아", "symbol": "NVDA", "market": "US" },
+  { "name": "마이크로소프트", "symbol": "MSFT", "market": "US" },
+  { "name": "S&P500(SPY)", "symbol": "SPY", "market": "US" },
+  { "name": "비트코인", "symbol": "BTC", "market": "COIN" },
+  { "name": "이더리움", "symbol": "ETH", "market": "COIN" }
+]

@@ -66,6 +66,32 @@ def resolve_chat_id() -> str | None:
     )
 
 
+def resolve_group_token() -> str | None:
+    """그룹(단톡)방 봇 토큰. 없으면 개인 봇 토큰으로 폴백."""
+    conf = _read_local_conf()
+    return (
+        os.environ.get("TELEGRAM_GROUP_BOT_TOKEN")
+        or conf.get("group_telegram_token")
+        or resolve_token()
+    )
+
+
+def resolve_group_chat_id() -> str | None:
+    """그룹(단톡)방 chat_id. 개인방으로 폴백하지 않는다 —
+    잘못 폴백하면 그룹 알림이 조용히 개인방으로 가서 눈치채기 어렵다."""
+    return (
+        os.environ.get("TELEGRAM_GROUP_CHAT_ID")
+        or str(_read_local_conf().get("group_chat_id") or "") or None
+    )
+
+
+def creds(target: str = "personal") -> tuple[str | None, str | None]:
+    """발송 대상별 (토큰, chat_id). target: 'personal' | 'group'."""
+    if str(target).lower() == "group":
+        return resolve_group_token(), resolve_group_chat_id()
+    return resolve_token(), resolve_chat_id()
+
+
 def send(text: str, chat_id: str | None = None, token: str | None = None,
          parse_mode: str | None = None) -> tuple[bool, str]:
     """텔레그램 메시지 발송. (성공여부, 메시지) 반환. parse_mode: 'HTML'/'MarkdownV2'."""

@@ -20,6 +20,7 @@ from . import notify, prices, signals
 _PROJECT = Path(__file__).resolve().parent.parent
 _DATA = _PROJECT / "data"
 WATCHLIST_FILE = _DATA / "watchlist.json"
+GROUP_WATCHLIST_FILE = _DATA / "watchlist_group.json"   # 단톡방 전용 종목 (개인 목록과 분리)
 PORTFOLIO_FILE = _DATA / "portfolio.json"
 ALERTS_FILE = _DATA / "alerts.json"          # 사용자 설정 (목표가/손절가/신호알림)
 STATE_FILE = _DATA / "alert_state.json"      # 런타임 상태 (gitignore)
@@ -161,6 +162,20 @@ def run_once(send_telegram: bool = True) -> list[str]:
 
 
 _DIV = "━━━━━━━━━━"
+
+
+def _arrow(chg) -> str:
+    """등락 표시 — 텍스트 삼각형.
+
+    이모지 삼각형은 🔺🔻 빨강 두 개뿐이라 색으로 상승/하락을 구분할 수 없고,
+    파란 삼각형 이모지는 유니코드에 없다. 🔵🔴 원형은 너무 크고 무겁게 렌더링된다.
+    그래서 텍스트 삼각형을 쓴다 — 크기가 본문과 맞고 방향으로 바로 구분된다.
+    (텔레그램은 본문 텍스트 색을 지정할 수 없어 색상은 테마 기본값)
+    """
+    c = chg or 0
+    # 하락만 빨간 이모지 삼각형(🔻)을 써서 색으로 갈린다.
+    # 상승도 이모지로 하면 🔺 뿐인데 그것도 빨강이라 색 구분이 사라진다.
+    return "▲" if c > 0 else ("🔻" if c < 0 else "―")
 
 
 def _opinion(up) -> tuple[str, str]:
@@ -347,7 +362,7 @@ def build_briefing(send_telegram: bool = True, kind: str = "pre") -> str:
     for r in rows:
         name, mkt, cur, chg, up, cfg = r["name"], r["mkt"], r["cur"], r["chg"], r["up"], r["cfg"]
         _, band = band_of(up)
-        arrow = "🔺" if chg > 0 else ("🔻" if chg < 0 else "▪️")
+        arrow = _arrow(chg)
         up_s = f"{up:.0f}({band})" if up is not None else "-"
         line = f"• {name}  {_fmt_price(cur, mkt)} {arrow}{chg:+.1f}%  · 신호 {up_s}"
         if r["open_pct"] is not None:
@@ -419,12 +434,14 @@ def remove_watch(query: str) -> dict:
     return {"ok": True, "msg": "제거됨: " + ", ".join(f"{g.get('name')}" for g in gone), "removed": gone}
 
 
-def build_chart_briefing(symbols, send_telegram: bool = True, news_n: int = 3) -> list[str]:
+def build_chart_briefing(symbols, send_telegram: bool = True, news_n: int = 3,
+                         target: str = "personal", title: str = "🌅 브리핑") -> list[str]:
     """지정 종목 각각을 '차트 + 풍부한 캡션(가격요약 + 관련뉴스 링크)'으로 발송.
 
     symbols: [(sym, mkt, name), ...]  (예: [("000660","KR","SK하이닉스")])
     - 현재가/등락률은 실시간 체결가 기준(get_live_quote), 일봉 폴백
     - 캡션이 1024자를 넘으면 뉴스를 별도 텍스트 메시지로 자동 분리(HTML 링크)
+    - target: 'personal'(개인방) | 'group'(단톡방)
     반환: 처리 로그 목록.
     """
     import html as _html
@@ -433,15 +450,19 @@ def build_chart_briefing(symbols, send_telegram: bool = True, news_n: int = 3) -
 
     from . import chartimg
 
+    tok, cid = notify.creds(target)
+    if send_telegram and not (tok and cid):
+        return [f"발송 대상 '{target}' 토큰/chat_id 미설정 — 중단"]
+
     alerts_cfg = _load(ALERTS_FILE, {})
     kst = datetime.now(timezone(timedelta(hours=9)))
     log: list[str] = []
 
     # --- 헤더 요약 ---
-    head = [f"🌅 브리핑  ({kst:%Y-%m-%d %H:%M} KST)", ""]
+    head = [f"{title}  ({kst:%Y-%m-%d %H:%M} KST)", ""]
     metas = []
     for sym, mkt, name in symbols:
-        df = prices.get_ohlcv(sym, mkt, "6mo")
+        df = prices.get_ohlcv(sym, mkt, "1y")   # 매수구간 추세 필터(200일선)에 필요
         if df is None or df.empty:
             head.append(f"• {name}({sym})  데이터 없음")
             metas.append((sym, mkt, name, None, None))
@@ -452,13 +473,13 @@ def build_chart_briefing(symbols, send_telegram: bool = True, news_n: int = 3) -
         chg = (cur - prev) / prev * 100 if prev else 0.0
         up = signals.evaluate(df).get("up_pct")
         _, band = band_of(up)
-        arrow = "🔺" if chg > 0 else ("🔻" if chg < 0 else "▪️")
+        arrow = _arrow(chg)
         up_s = f"{up:.0f}({band})" if up is not None else "-"
         head.append(f"• {name}({sym})  {_fmt_price(cur, mkt)} {arrow}{chg:+.1f}%  · 신호 {up_s}")
         metas.append((sym, mkt, name, (cur, chg, up), df))
     head += ["", "※ 보조 지표 요약 · 투자 판단은 본인 책임"]
     if send_telegram:
-        notify.send("\n".join(head))
+        notify.send("\n".join(head), chat_id=cid, token=tok)
     log.append("헤더 발송")
 
     # --- 종목별 차트 + 캡션 ---
@@ -469,13 +490,20 @@ def build_chart_briefing(symbols, send_telegram: bool = True, news_n: int = 3) -
         cfg = alerts_cfg.get(_key(sym, mkt), {})
         oe, ol = _opinion(up)
         up_s = f"{up:.0f}" if up is not None else "-"
-        arrow = "🔺" if chg > 0 else ("🔻" if chg < 0 else "▪️")
+        arrow = _arrow(chg)
         lines = [
             f"{oe} {ol} ({up_s}/100)",
             f"{_html.escape(name)} ({sym})  {arrow}{chg:+.1f}%",
             _DIV, "💰 가격 요약",
             *_price_rows(mkt, df, cfg, cur=cur),
         ]
+        # 매수 관심구간 — 자동 산출(추세·근거 부족하면 사유를 그대로 적는다)
+        zone = entry_mod.compute_entry_zone(df, cur)
+        lines.append(_DIV)
+        if zone.get("ok"):
+            lines += entry_mod.format_zone(zone, lambda v: _fmt_price(v, mkt))
+        else:
+            lines.append(f"🟢 매수 관심구간 — {_html.escape(zone.get('reason', '없음'))}")
         news = _news_multi(name, mkt, limit=news_n)
         base_cap = "\n".join(lines)
         full_cap = "\n".join(lines + ([_DIV] + news if news else []))
@@ -489,16 +517,18 @@ def build_chart_briefing(symbols, send_telegram: bool = True, news_n: int = 3) -
             out = chartimg.render_chart(sym, mkt, name, path,
                                         target=cfg.get("target"), entry=cfg.get("entry"), df=df)
             if out and len(full_cap) <= 1024:
-                notify.send_photo(out, caption=full_cap, parse_mode="HTML")
+                notify.send_photo(out, caption=full_cap, parse_mode="HTML",
+                                  chat_id=cid, token=tok)
                 log.append(f"{name}: 차트+뉴스 인라인")
             elif out:
-                notify.send_photo(out, caption=base_cap, parse_mode="HTML")
+                notify.send_photo(out, caption=base_cap, parse_mode="HTML",
+                                  chat_id=cid, token=tok)
                 if news:
                     notify.send("\n".join([f"📰 {_html.escape(name)} 관련 뉴스", ""] + news),
-                                parse_mode="HTML")
+                                parse_mode="HTML", chat_id=cid, token=tok)
                 log.append(f"{name}: 차트 + 뉴스 별도")
             else:
-                notify.send(full_cap, parse_mode="HTML")
+                notify.send(full_cap, parse_mode="HTML", chat_id=cid, token=tok)
                 log.append(f"{name}: 텍스트 폴백")
         finally:
             if path and os.path.exists(path):
@@ -507,6 +537,46 @@ def build_chart_briefing(symbols, send_telegram: bool = True, news_n: int = 3) -
                 except Exception:
                     pass
     return log
+
+
+def group_symbols() -> list[tuple[str, str, str]]:
+    """단톡방 전용 종목 목록 → [(symbol, market, name), ...]"""
+    return [
+        (str(i["symbol"]), str(i["market"]).upper(), i.get("name", i["symbol"]))
+        for i in _load(GROUP_WATCHLIST_FILE, [])
+        if i.get("symbol") and i.get("market")
+    ]
+
+
+def build_group_briefing(send_telegram: bool = True, news_n: int = 3,
+                         title: str = "📊 단톡방 브리핑") -> list[str]:
+    """단톡방 종목 전체를 차트 + 가격요약 + 매수구간 + 뉴스로 발송."""
+    syms = group_symbols()
+    if not syms:
+        return ["data/watchlist_group.json 이 비어 있음"]
+    return build_chart_briefing(syms, send_telegram=send_telegram, news_n=news_n,
+                                target="group", title=title)
+
+
+def add_group_watch(query: str, market: str | None = None, name: str | None = None) -> dict:
+    """단톡방 종목 목록에 추가 (개인 워치리스트와 별개)."""
+    from . import search as search_mod
+    cands = search_mod.search_symbols(query, limit=8)
+    if market:
+        mk = market.strip().upper()
+        cands = [c for c in cands if c["market"] == mk] or cands
+    if not cands:
+        return {"ok": False, "msg": f"'{query}' 검색 결과 없음", "candidates": []}
+    pick = cands[0]
+    item = {"name": name or pick["name"], "symbol": pick["symbol"], "market": pick["market"]}
+    wl = _load(GROUP_WATCHLIST_FILE, [])
+    for w in wl:
+        if str(w.get("symbol")) == item["symbol"] and str(w.get("market")).upper() == item["market"]:
+            return {"ok": False, "msg": f"이미 있음: {w.get('name')}", "candidates": cands}
+    wl.append(item)
+    _save(GROUP_WATCHLIST_FILE, wl)
+    return {"ok": True, "msg": f"단톡방 목록 추가: {item['name']} ({item['symbol']}/{item['market']})",
+            "candidates": cands}
 
 
 def check_market_halt(send_telegram: bool = True,
@@ -582,8 +652,7 @@ def build_market_wrap(send_telegram: bool = True) -> str:
     kst = datetime.now(timezone(timedelta(hours=9)))
     idx = {d["name"]: d for d in mkt_mod.get_indices()}
 
-    def arw(c):
-        return "🔻" if (c or 0) < 0 else "🔺" if (c or 0) > 0 else "▪️"
+    arw = _arrow
 
     L = [f"🇰🇷 오늘의 증시 ({kst.month}월 {kst.day}일)", _DIV]
     for nm in ("코스피", "코스닥"):
