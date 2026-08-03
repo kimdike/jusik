@@ -92,6 +92,39 @@ def creds(target: str = "personal") -> tuple[str | None, str | None]:
     return resolve_token(), resolve_chat_id()
 
 
+_MAX_RETRY = 3          # 429 재시도 횟수
+_RETRY_CAP = 60         # retry_after 가 이보다 크면 포기 (무한 대기 방지)
+
+
+def _post(url: str, *, retries: int = _MAX_RETRY, **kwargs) -> tuple[bool, str]:
+    """텔레그램 API 호출 + 429(속도 제한) 재시도.
+
+    그룹 채팅은 분당 약 20통 제한이 있어, 종목을 연달아 보내면 뒤쪽이 429로 거부된다.
+    응답의 retry_after 만큼 기다렸다가 다시 보낸다.
+    """
+    import time
+
+    last = ""
+    for attempt in range(retries + 1):
+        try:
+            resp = requests.post(url, **kwargs)
+        except Exception as e:
+            return False, f"전송 오류: {e}"
+        if resp.status_code == 200 and resp.json().get("ok"):
+            return True, "전송 성공"
+        last = f"전송 실패: {resp.status_code} {resp.text[:200]}"
+        if resp.status_code != 429 or attempt == retries:
+            return False, last
+        try:
+            wait = float(resp.json()["parameters"]["retry_after"])
+        except Exception:
+            wait = 5.0
+        if wait > _RETRY_CAP:
+            return False, last + f" (retry_after {wait:.0f}s 초과로 포기)"
+        time.sleep(wait + 0.5)
+    return False, last
+
+
 def send(text: str, chat_id: str | None = None, token: str | None = None,
          parse_mode: str | None = None) -> tuple[bool, str]:
     """텔레그램 메시지 발송. (성공여부, 메시지) 반환. parse_mode: 'HTML'/'MarkdownV2'."""
@@ -101,20 +134,11 @@ def send(text: str, chat_id: str | None = None, token: str | None = None,
         return False, "봇 토큰을 찾을 수 없습니다 (TELEGRAM_BOT_TOKEN 또는 config/notify.json)."
     if not chat_id:
         return False, "chat_id 를 찾을 수 없습니다."
-    try:
-        payload = {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
-        if parse_mode:
-            payload["parse_mode"] = parse_mode
-        resp = requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            json=payload,
-            timeout=10,
-        )
-        if resp.status_code == 200 and resp.json().get("ok"):
-            return True, "전송 성공"
-        return False, f"전송 실패: {resp.status_code} {resp.text[:200]}"
-    except Exception as e:
-        return False, f"전송 오류: {e}"
+    payload = {"chat_id": chat_id, "text": text, "disable_web_page_preview": True}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
+    return _post(f"https://api.telegram.org/bot{token}/sendMessage",
+                 json=payload, timeout=10)
 
 
 def send_photo(photo_path: str, caption: str = "",
@@ -127,22 +151,18 @@ def send_photo(photo_path: str, caption: str = "",
         return False, "봇 토큰을 찾을 수 없습니다."
     if not chat_id:
         return False, "chat_id 를 찾을 수 없습니다."
+    data = {"chat_id": chat_id, "caption": caption[:1024]}
+    if parse_mode:
+        data["parse_mode"] = parse_mode
     try:
-        data = {"chat_id": chat_id, "caption": caption[:1024]}
-        if parse_mode:
-            data["parse_mode"] = parse_mode
+        # 재시도 시 스트림이 소진되지 않게 바이트로 읽어둔다
         with open(photo_path, "rb") as f:
-            resp = requests.post(
-                f"https://api.telegram.org/bot{token}/sendPhoto",
-                data=data,
-                files={"photo": f},
-                timeout=30,
-            )
-        if resp.status_code == 200 and resp.json().get("ok"):
-            return True, "전송 성공"
-        return False, f"전송 실패: {resp.status_code} {resp.text[:200]}"
+            blob = f.read()
     except Exception as e:
-        return False, f"전송 오류: {e}"
+        return False, f"이미지 읽기 실패: {e}"
+    return _post(f"https://api.telegram.org/bot{token}/sendPhoto",
+                 data=data, files={"photo": ("chart.png", blob, "image/png")},
+                 timeout=30)
 
 
 def is_configured() -> bool:

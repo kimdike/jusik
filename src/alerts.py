@@ -486,9 +486,16 @@ def build_chart_briefing(symbols, send_telegram: bool = True, news_n: int = 3,
         log.append("헤더 (미발송)")
 
     # --- 종목별 차트 + 캡션 ---
-    for sym, mkt, name, meta, df in metas:
+    # 텔레그램 그룹은 분당 약 20통 제한. 종목당 최대 2통이라 간격을 두지 않으면
+    # 뒤쪽 종목이 429 로 거부된다(재시도는 notify._post 가 하지만 애초에 안 걸리게 한다).
+    import time as _time
+    PACE_SEC = 4.0
+
+    for idx, (sym, mkt, name, meta, df) in enumerate(metas):
         if meta is None:
             continue
+        if send_telegram and idx:
+            _time.sleep(PACE_SEC)
         cur, chg, up = meta
         cfg = alerts_cfg.get(_key(sym, mkt), {})
         oe, ol = _opinion(up)
