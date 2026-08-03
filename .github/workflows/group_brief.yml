@@ -1,0 +1,43 @@
+name: 단톡방 브리핑
+
+# 단톡방(부부 공유) 전용 종목 목록(data/watchlist_group.json)을
+# 차트 + 가격요약 + 매수 관심구간 + 관련뉴스로 발송한다.
+# 개인 워치리스트/보유종목과 분리된 목록이라 개인 포지션이 노출되지 않는다.
+#
+# 스케줄은 Cloudflare Workers(deploy/cloudflare-worker)가 담당한다.
+# 그룹용 봇/채팅 Secret 을 쓰므로 개인방 알림과 섞이지 않는다.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: group-brief
+  cancel-in-progress: false     # 종목별로 순차 발송하므로 겹치면 순서가 꼬인다
+
+jobs:
+  brief:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25         # 16종목 차트 렌더 + 뉴스 조회 + 업로드
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 한글 폰트 설치 (차트 이미지 한글 표시용)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-nanum && fc-cache -f
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-alerts.txt
+
+      - name: 의존성 설치 (경량)
+        run: pip install -r requirements-alerts.txt
+
+      - name: 단톡방 브리핑 발송
+        env:
+          TELEGRAM_GROUP_BOT_TOKEN: ${{ secrets.TELEGRAM_GROUP_BOT_TOKEN }}
+          TELEGRAM_GROUP_CHAT_ID: ${{ secrets.TELEGRAM_GROUP_CHAT_ID }}
+        run: python alerts_run.py --group-brief

@@ -68,6 +68,13 @@ const SCHEDULE = [
     hours: [21], // KST 06:00 (미국장 마감 후, 아침 브리핑 전)
     // 매일 — 주말도 돌려 유니버스 결과를 최신으로 유지
   },
+  {
+    file: "group_brief.yml",
+    label: "단톡방 브리핑",
+    minute: 40,
+    hours: [23], // KST 08:40 — 개인 장전브리핑(08:30) 직후
+    dow: [0, 1, 2, 3, 4], // UTC 일~목 = KST 월~금
+  },
 ];
 
 function isDue(job, now) {
