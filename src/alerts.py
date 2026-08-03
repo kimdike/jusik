@@ -480,8 +480,10 @@ def build_chart_briefing(symbols, send_telegram: bool = True, news_n: int = 3,
         metas.append((sym, mkt, name, (cur, chg, up), df))
     head += ["", "※ 보조 지표 요약 · 투자 판단은 본인 책임"]
     if send_telegram:
-        notify.send("\n".join(head), chat_id=cid, token=tok)
-    log.append("헤더 발송")
+        ok, info = notify.send("\n".join(head), chat_id=cid, token=tok)
+        log.append("헤더 발송 " + ("✅" if ok else f"❌ {info}"))
+    else:
+        log.append("헤더 (미발송)")
 
     # --- 종목별 차트 + 캡션 ---
     for sym, mkt, name, meta, df in metas:
@@ -517,20 +519,27 @@ def build_chart_briefing(symbols, send_telegram: bool = True, news_n: int = 3,
             os.close(fd)
             out = chartimg.render_chart(sym, mkt, name, path,
                                         target=cfg.get("target"), entry=cfg.get("entry"), df=df)
+            # 발송 결과를 반드시 로그에 남긴다 — 예전엔 반환값을 버려서
+            # 전송이 실패해도 "발송했다"고 찍혔다(워크플로우도 success 로 끝남).
             if out and len(full_cap) <= 1024:
-                notify.send_photo(out, caption=full_cap, parse_mode="HTML",
-                                  chat_id=cid, token=tok)
-                log.append(f"{name}: 차트+뉴스 인라인")
+                ok, info = notify.send_photo(out, caption=full_cap, parse_mode="HTML",
+                                             chat_id=cid, token=tok)
+                log.append(f"{name}: 차트+뉴스 인라인 "
+                           + ("✅" if ok else f"❌ {info}"))
             elif out:
-                notify.send_photo(out, caption=base_cap, parse_mode="HTML",
-                                  chat_id=cid, token=tok)
+                ok, info = notify.send_photo(out, caption=base_cap, parse_mode="HTML",
+                                             chat_id=cid, token=tok)
+                detail = "✅" if ok else f"❌ {info}"
                 if news:
-                    notify.send("\n".join([f"📰 {_html.escape(name)} 관련 뉴스", ""] + news),
-                                parse_mode="HTML", chat_id=cid, token=tok)
-                log.append(f"{name}: 차트 + 뉴스 별도")
+                    ok2, info2 = notify.send(
+                        "\n".join([f"📰 {_html.escape(name)} 관련 뉴스", ""] + news),
+                        parse_mode="HTML", chat_id=cid, token=tok)
+                    detail += " / 뉴스 " + ("✅" if ok2 else f"❌ {info2}")
+                log.append(f"{name}: 차트 + 뉴스 별도 {detail}")
             else:
-                notify.send(full_cap, parse_mode="HTML", chat_id=cid, token=tok)
-                log.append(f"{name}: 텍스트 폴백")
+                ok, info = notify.send(full_cap, parse_mode="HTML",
+                                       chat_id=cid, token=tok)
+                log.append(f"{name}: 텍스트 폴백 " + ("✅" if ok else f"❌ {info}"))
         finally:
             if path and os.path.exists(path):
                 try:
