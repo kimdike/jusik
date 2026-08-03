@@ -648,8 +648,12 @@ SPIKE_BATCH = 6               # 한 묶음에 몇 종목까지
 SPIKE_BATCH_PAUSE = 60        # 묶음 사이 대기(초) — 급하게 밀어넣지 않는다
 
 
-def _spike_threshold(df, mkt: str) -> float:
+def _spike_threshold(df, mkt: str, override: float | None = None) -> float:
     """종목별 '급변동' 기준(%) = 최근 60일 일간 변동률의 90분위.
+
+    override 가 주어지면(watchlist_group.json 의 spike_pct) 그 값을 그대로 쓴다.
+    분포 기준은 "이 종목치고 드문 움직임"을 잡지만, 변동성이 큰 종목은 기준도
+    커져서 사용자가 원하는 감도보다 둔해질 수 있다. 그럴 때 직접 지정한다.
 
     "이 종목 기준으로 10일에 한 번쯤 있는 움직임"이라는 뜻이다.
     삼성전자 3%와 도지코인 3%는 다른 사건이므로 고정값을 쓰지 않는다.
@@ -660,6 +664,11 @@ def _spike_threshold(df, mkt: str) -> float:
     상한: 변동성이 극단적인 종목도 알림이 아예 안 오지는 않게
     """
     import numpy as np
+    if override:
+        try:
+            return max(0.3, float(override))     # 0 이나 음수로 도배되는 것만 방지
+        except (TypeError, ValueError):
+            pass
     floor = SPIKE_FLOOR.get(mkt.upper(), SPIKE_FLOOR_DEFAULT)
     try:
         d = (df["close"].astype(float).pct_change().dropna().abs() * 100)
@@ -699,6 +708,12 @@ def check_spikes(send_telegram: bool = True, target: str = "group",
     marks: dict = state.setdefault("sym", {})
 
     alerts_cfg = _load(ALERTS_FILE, {})
+    # 종목별 직접 지정 기준 (watchlist_group.json 의 spike_pct)
+    overrides = {
+        _key(str(i["symbol"]), str(i["market"]).upper()): i.get("spike_pct")
+        for i in _load(GROUP_WATCHLIST_FILE, [])
+        if i.get("symbol") and i.get("market")
+    }
     log: list[str] = []
     hits = []
 
@@ -712,7 +727,7 @@ def check_spikes(send_telegram: bool = True, target: str = "group",
         if not prev:
             continue
         chg = (cur - prev) / prev * 100
-        th = _spike_threshold(df, mkt)
+        th = _spike_threshold(df, mkt, overrides.get(_key(sym, mkt)))
         key = _key(sym, mkt)
         rec = marks.get(key) or {"up": 0, "dn": 0}
 

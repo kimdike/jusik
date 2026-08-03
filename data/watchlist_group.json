@@ -1,6 +1,6 @@
 [
-  { "name": "삼성전자", "symbol": "005930", "market": "KR" },
-  { "name": "SK하이닉스", "symbol": "000660", "market": "KR" },
+  { "name": "삼성전자", "symbol": "005930", "market": "KR", "spike_pct": 5.0 },
+  { "name": "SK하이닉스", "symbol": "000660", "market": "KR", "spike_pct": 5.0 },
   { "name": "LG전자", "symbol": "066570", "market": "KR" },
   { "name": "LG에너지솔루션", "symbol": "373220", "market": "KR" },
   { "name": "현대차", "symbol": "005380", "market": "KR" },
