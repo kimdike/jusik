@@ -1,0 +1,1052 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>주식 알림 시스템 개발사 — 조용한 실패를 찾아낸 기록</title>
+<style>*{margin:0;padding:0;box-sizing:border-box}img{max-width:100%}</style>
+</head>
+<body>
+<style>
+  :root {
+    --paper:      #F1F2EF;
+    --surface:    #FFFFFF;
+    --surface-2:  #E7E9E4;
+    --ink:        #161A17;
+    --ink-soft:   #3B433D;
+    --muted:      #5F6862;
+    --line:       #D2D6CE;
+    --accent:     #8A6512;
+    --accent-dim: #B99A4E;
+    --false-ok:   #6E8F76;
+    --fail:       #B3352C;
+    --fix:        #2A6DB0;
+    --code-bg:    #1B1F1C;
+    --code-ink:   #D9DED8;
+
+    --serif: "Nanum Myeongjo", "NanumMyeongjo", ui-serif, Georgia, "Apple SD Gothic Neo", serif;
+    --sans: "Pretendard", "Pretendard Variable", -apple-system, "Apple SD Gothic Neo",
+            "Malgun Gothic", system-ui, sans-serif;
+    --mono: "D2Coding", ui-monospace, "Cascadia Mono", Consolas, "Courier New", monospace;
+
+    --col: 40rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper:      #101311;
+      --surface:    #171B18;
+      --surface-2:  #1F2420;
+      --ink:        #E9EBE6;
+      --ink-soft:   #C2C8C0;
+      --muted:      #939C95;
+      --line:       #2C322D;
+      --accent:     #D6A93C;
+      --accent-dim: #8A6512;
+      --false-ok:   #7FA187;
+      --fail:       #E0685C;
+      --fix:        #6BA6E0;
+      --code-bg:    #0A0C0A;
+      --code-ink:   #CDD3CB;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #101311;
+    --surface:    #171B18;
+    --surface-2:  #1F2420;
+    --ink:        #E9EBE6;
+    --ink-soft:   #C2C8C0;
+    --muted:      #939C95;
+    --line:       #2C322D;
+    --accent:     #D6A93C;
+    --accent-dim: #8A6512;
+    --false-ok:   #7FA187;
+    --fail:       #E0685C;
+    --fix:        #6BA6E0;
+    --code-bg:    #0A0C0A;
+    --code-ink:   #CDD3CB;
+  }
+
+  :root[data-theme="light"] {
+    --paper:      #F1F2EF;
+    --surface:    #FFFFFF;
+    --surface-2:  #E7E9E4;
+    --ink:        #161A17;
+    --ink-soft:   #3B433D;
+    --muted:      #5F6862;
+    --line:       #D2D6CE;
+    --accent:     #8A6512;
+    --accent-dim: #B99A4E;
+    --false-ok:   #6E8F76;
+    --fail:       #B3352C;
+    --fix:        #2A6DB0;
+    --code-bg:    #1B1F1C;
+    --code-ink:   #D9DED8;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.75;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 78rem;
+    margin: 0 auto;
+    padding: 0 1.5rem 6rem;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0 3.5rem;
+  }
+
+  /* ---------- 표지 ---------- */
+  .cover {
+    grid-column: 1 / -1;
+    border-bottom: 1px solid var(--line);
+    padding: 5rem 0 2.75rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+  }
+  .kicker {
+    font-family: var(--mono);
+    font-size: .74rem;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+  .cover h1 {
+    font-family: var(--serif);
+    font-size: clamp(2.1rem, 5.4vw, 3.5rem);
+    line-height: 1.16;
+    font-weight: 700;
+    text-wrap: balance;
+    letter-spacing: -.015em;
+  }
+  .cover h1 em {
+    font-style: normal;
+    color: var(--accent);
+  }
+  .standfirst {
+    max-width: 34rem;
+    font-size: 1.06rem;
+    color: var(--ink-soft);
+    text-wrap: pretty;
+  }
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 2.4rem;
+    row-gap: .9rem;
+    padding-top: .6rem;
+    font-family: var(--mono);
+    font-size: .8rem;
+    color: var(--muted);
+  }
+  .facts b {
+    display: block;
+    font-family: var(--sans);
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---------- 좌측 레일 ---------- */
+  .rail { display: none; }
+
+  @media (min-width: 62rem) {
+    .wrap { grid-template-columns: 12.5rem minmax(0, var(--col)) 1fr; }
+    .cover, .chapter, .closing { grid-column: 2; }
+    .rail {
+      display: block;
+      grid-column: 1;
+      grid-row: 2 / 100;
+      position: sticky;
+      top: 2rem;
+      align-self: start;
+      padding-top: 3rem;
+      font-family: var(--mono);
+      font-size: .74rem;
+      line-height: 1.6;
+      border-right: 1px solid var(--line);
+      padding-right: 1.2rem;
+    }
+    .rail ol { list-style: none; display: flex; flex-direction: column; gap: .95rem; }
+    .rail a { color: var(--muted); text-decoration: none; display: block; }
+    .rail a:hover, .rail a:focus-visible { color: var(--accent); }
+    .rail time { display: block; color: var(--accent-dim); }
+  }
+
+  /* ---------- 장 ---------- */
+  .chapter {
+    padding: 3.4rem 0 .6rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.15rem;
+  }
+  .chapter + .chapter { border-top: 1px solid var(--line); }
+  .dateline {
+    display: flex;
+    align-items: baseline;
+    gap: .8rem;
+    font-family: var(--mono);
+    font-size: .78rem;
+    color: var(--muted);
+    letter-spacing: .04em;
+  }
+  .dateline .d { color: var(--accent); }
+  .chapter h2 {
+    font-family: var(--serif);
+    font-size: clamp(1.5rem, 3.2vw, 2rem);
+    line-height: 1.3;
+    font-weight: 700;
+    text-wrap: balance;
+    letter-spacing: -.01em;
+  }
+  .chapter p { text-wrap: pretty; }
+  .chapter p strong { font-weight: 700; }
+  .lede { color: var(--ink-soft); }
+
+  h3 {
+    font-family: var(--sans);
+    font-size: .78rem;
+    font-weight: 700;
+    letter-spacing: .13em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: .5rem;
+  }
+
+  ul.plain { display: flex; flex-direction: column; gap: .55rem; padding-left: 1.15rem; }
+  ul.plain li::marker { color: var(--accent-dim); }
+
+  /* ---------- 증거 블록: 단 밖으로 ---------- */
+  .evidence {
+    margin: .7rem 0;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: var(--surface);
+    overflow: hidden;
+  }
+  @media (min-width: 62rem) {
+    .evidence { width: calc(100% + 9rem); }
+  }
+  .evidence > figcaption {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: .62rem .95rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--surface-2);
+  }
+
+  pre {
+    font-family: var(--mono);
+    font-size: .8rem;
+    line-height: 1.65;
+    background: var(--code-bg);
+    color: var(--code-ink);
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+  }
+  pre b { color: #fff; font-weight: 700; }
+  pre .ok    { color: var(--false-ok); }
+  pre .bad   { color: #E0685C; }
+  pre .good  { color: #6BA6E0; }
+  pre .dim   { color: #6C756E; }
+
+  /* 텔레그램 말풍선 — 이 프로젝트의 결과물이 실제로 나타나는 형태 */
+  .tg { padding: 1rem; display: flex; flex-direction: column; gap: .5rem; background: var(--surface-2); }
+  .bubble {
+    align-self: flex-start;
+    max-width: 30rem;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 3px 12px 12px 12px;
+    padding: .7rem .85rem;
+    font-size: .86rem;
+    line-height: 1.62;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 1px 2px rgb(0 0 0 / .06);
+  }
+  .bubble .who {
+    font-family: var(--mono);
+    font-size: .68rem;
+    letter-spacing: .08em;
+    color: var(--fix);
+    display: block;
+    margin-bottom: .3rem;
+  }
+  .up   { color: var(--fix); font-weight: 700; }
+  .down { color: var(--fail); font-weight: 700; }
+
+  /* 표 */
+  .tablewrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .86rem; }
+  th, td {
+    text-align: left;
+    padding: .55rem .95rem;
+    border-bottom: 1px solid var(--line);
+    font-variant-numeric: tabular-nums;
+  }
+  th {
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .07em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  td.n { font-family: var(--mono); }
+  tr:last-child td { border-bottom: 0; }
+  .win  { color: var(--fix); font-weight: 700; }
+  .lose { color: var(--muted); }
+
+  /* 판정 칩 */
+  .verdict {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .05em;
+    padding: .16rem .5rem;
+    border-radius: 2px;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+  }
+  .v-lie  { color: var(--false-ok); }
+  .v-fail { color: var(--fail); }
+  .v-fix  { color: var(--fix); }
+
+  /* 문제/조치 쌍 */
+  .pair {
+    display: grid;
+    gap: 0;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: .6rem 0;
+  }
+  @media (min-width: 34rem) { .pair { grid-template-columns: 1fr 1fr; } }
+  .pair > div { padding: .9rem 1rem; background: var(--surface); }
+  .pair > div + div { border-top: 1px solid var(--line); }
+  @media (min-width: 34rem) {
+    .pair > div + div { border-top: 0; border-left: 1px solid var(--line); }
+  }
+  .pair h4 {
+    font-family: var(--mono);
+    font-size: .7rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-bottom: .35rem;
+  }
+  .pair .p h4 { color: var(--fail); }
+  .pair .f h4 { color: var(--fix); }
+  .pair p { font-size: .89rem; line-height: 1.65; }
+
+  /* 인용 */
+  blockquote {
+    border-left: 2px solid var(--accent);
+    padding: .1rem 0 .1rem 1.05rem;
+    color: var(--ink-soft);
+    font-family: var(--serif);
+    font-size: 1.05rem;
+    line-height: 1.7;
+  }
+
+  /* 마무리 */
+  .closing {
+    margin-top: 3.2rem;
+    padding: 2.2rem 0 0;
+    border-top: 2px solid var(--accent);
+    display: flex;
+    flex-direction: column;
+    gap: 1.1rem;
+  }
+  .closing h2 {
+    font-family: var(--serif);
+    font-size: 1.7rem;
+    font-weight: 700;
+  }
+  .lessons { display: flex; flex-direction: column; gap: 1rem; margin-top: .4rem; }
+  .lesson {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0 1rem;
+    align-items: start;
+  }
+  .lesson .mark {
+    font-family: var(--serif);
+    font-size: 1.5rem;
+    color: var(--accent);
+    line-height: 1.1;
+  }
+  .lesson p { font-size: .95rem; }
+  .lesson b { display: block; font-size: 1rem; }
+
+  footer {
+    grid-column: 1 / -1;
+    margin-top: 3.5rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid var(--line);
+    font-family: var(--mono);
+    font-size: .72rem;
+    color: var(--muted);
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem 1.5rem;
+  }
+
+  a { color: var(--accent); text-underline-offset: .2em; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+
+  <header class="cover">
+    <span class="kicker">개발 기록 · 2026.06.28 — 08.03 · 37일</span>
+    <h1>성공이라고 보고하면서<br><em>아무것도 하지 않던 것들</em></h1>
+    <p class="standfirst">
+      한국주식·미국주식·코인을 한 곳에서 보려고 만든 개인 대시보드가,
+      37일 동안 텔레그램 알림 시스템으로 바뀌어 온 기록.
+      개선의 계기는 대부분 새 아이디어가 아니라 <strong>조용히 잘못 돌던 것을 발견한 순간</strong>이었다.
+    </p>
+    <div class="facts">
+      <span>개발 기간<b>37일</b></span>
+      <span>워크플로우<b>9개</b></span>
+      <span>백테스트 표본<b>36,094</b></span>
+      <span>찾아낸 침묵 실패<b>8건</b></span>
+    </div>
+  </header>
+
+  <nav class="rail" aria-label="목차">
+    <ol>
+      <li><a href="#c1"><time>06.28</time>대시보드에서 시작</a></li>
+      <li><a href="#c2"><time>06.28</time>PC를 꺼도 오게</a></li>
+      <li><a href="#c3"><time>06.29–30</time>알림을 정보로</a></li>
+      <li><a href="#c4"><time>07.14</time>금액이 안 맞는다</a></li>
+      <li><a href="#c5"><time>07.28</time>주기 재설계</a></li>
+      <li><a href="#c6"><time>07.28</time>매수자리를 의심하다</a></li>
+      <li><a href="#c7"><time>07.28</time>크론이 실행을 버린다</a></li>
+      <li><a href="#c8"><time>07.29</time>방을 나누다</a></li>
+      <li><a href="#c9"><time>08.03</time>토큰 한 글자</a></li>
+      <li><a href="#c10"><time>08.03</time>다섯 번째 침묵</a></li>
+      <li><a href="#c11"><time>08.03</time>하루 흐름으로</a></li>
+      <li><a href="#now">현재 구조</a></li>
+    </ol>
+  </nav>
+
+  <section class="chapter" id="c1">
+    <div class="dateline"><span class="d">2026.06.28</span><span>1일차</span></div>
+    <h2>지표를 하나씩 찾아보는 게 귀찮아서</h2>
+    <p class="lede">
+      시작은 단순했다. 한국주식·미국주식·코인을 각각 다른 앱에서 확인하고,
+      이동평균·RSI·MACD를 따로 해석하는 일이 번거로웠다.
+    </p>
+    <p>
+      그래서 Streamlit으로 대시보드를 만들었다. 시세는 yfinance와 업비트 공개 API,
+      뉴스는 구글 뉴스 RSS — <strong>전부 무료, API 키 없이</strong>. 여러 지표의 신호를
+      투표 방식으로 합쳐 0~100 점수 하나로 환산하고, 그 점수를 다섯 단계
+      (강한 하락 → 하락 → 중립 → 상승 → 강한 상승)로 보여줬다.
+    </p>
+    <p>
+      처음부터 지킨 원칙이 하나 있다. <strong>예측기가 아니라 보조 지표 요약</strong>이라는 것.
+      이 원칙은 이후 모든 판단에서 기준으로 쓰였고, 특히 매수자리를 다시 만들 때
+      결정적인 역할을 했다.
+    </p>
+  </section>
+
+  <section class="chapter" id="c2">
+    <div class="dateline"><span class="d">2026.06.28</span><span>같은 날 저녁</span></div>
+    <h2>대시보드를 열어봐야 안다는 게 문제였다</h2>
+    <p>
+      만들고 보니 한계가 명확했다. 신호가 바뀌어도 내가 앱을 열지 않으면 모른다.
+      장중에 계속 들여다볼 수도 없다.
+    </p>
+    <div class="pair">
+      <div class="p">
+        <h4>문제</h4>
+        <p>신호 변화를 놓친다. PC를 켜둬야만 자동 점검이 돌아간다.</p>
+      </div>
+      <div class="f">
+        <h4>조치</h4>
+        <p>GitHub Actions 크론으로 이전. 텔레그램 봇으로 발송. PC와 무관하게 동작.</p>
+      </div>
+    </div>
+    <p>
+      이때 도입한 구조가 이후 한 달을 지탱했다. 상태 파일에 직전 신호 밴드와 가격을
+      저장해두고, <strong>“바뀐 순간”에만 한 번</strong> 알린다. 같은 상태가 유지되는 동안은
+      침묵한다. 도배를 막는 이 설계는 지금도 그대로다.
+    </p>
+    <p>
+      여기서 심어둔 씨앗이 하나 있다. 스케줄링을 GitHub에 맡긴 것 —
+      <strong>그게 5주 뒤에 가장 큰 문제로 돌아온다.</strong>
+    </p>
+  </section>
+
+  <section class="chapter" id="c3">
+    <div class="dateline"><span class="d">2026.06.29 — 06.30</span><span>2–3일차</span></div>
+    <h2>알림이 오긴 오는데, 그래서 뭘 어쩌라는 건지</h2>
+    <p>
+      “삼성전자 신호 변경”이라는 문장만 오면 결국 대시보드를 다시 열어야 했다.
+      알림이 알림으로 끝나고 정보가 되지 못한 것이다. 이틀에 걸쳐 이 부분을 채웠다.
+    </p>
+    <ul class="plain">
+      <li><strong>차트 이미지 첨부</strong> — 지지·저항선과 목표가를 그린 PNG를 즉석에서 생성해 같이 보냄</li>
+      <li><strong>가격 요약표</strong> — 현재가·지지·저항·목표·손절을 거리(%)와 함께 한 블록에</li>
+      <li><strong>관련 뉴스</strong> — 신호가 바뀐 이유를 짐작할 수 있게 제목과 링크</li>
+      <li><strong>아침 브리핑</strong> — 장 전에 워치리스트 전체를 신호 강한 순으로 한 통</li>
+      <li><strong>종목 발굴</strong> — 매일 밤 유니버스를 스캔해 가치+타이밍 후보를 추림</li>
+      <li><strong>백테스트</strong> — “이 신호대로 했으면 어땠나”를 확인하는 화면</li>
+    </ul>
+    <p>
+      이 시점의 알림은 이런 모습이었다. 결론을 먼저 쓰고, 근거를 아래에 붙인다.
+    </p>
+    <figure class="evidence">
+      <figcaption>실제 발송 형태 — 결론 먼저</figcaption>
+      <div class="tg">
+        <div class="bubble">
+          <span class="who">JDbot</span>
+          🔔 신호 변경 → 📈 상승 우세<br>
+          <strong>SK하이닉스 (000660)</strong><br><br>
+          🟢 매수 우위 (68/100)<br>
+          ━━━━━━━━━━<br>
+          💰 가격 요약<br>
+          현재&nbsp; 1,816,000원<br>
+          🟢 지지 1,777,932원 (−2.1%)<br>
+          🔴 저항 1,904,000원 (+4.8%)
+        </div>
+      </div>
+    </figure>
+    <p>
+      함께 넣은 백테스트 화면은 나중에 큰 역할을 한다.
+      <strong>“이 규칙이 정말 통하는가”를 물어볼 수 있는 도구가 이미 있었다는 뜻</strong>이다.
+    </p>
+  </section>
+
+  <section class="chapter" id="c4">
+    <div class="dateline"><span class="d">2026.07.14</span><span>17일차</span></div>
+    <h2>금액이 안 맞는다</h2>
+    <p class="lede">
+      첫 번째 침묵 실패. 7월 4일에 찍어둔 스크린샷 한 장에서 드러났다.
+      구글은 삼성전자를 309,500원으로 표시하는데, 대시보드는 286,000원이었다.
+    </p>
+    <p>
+      286,000원은 틀린 값이 아니었다. <strong>전일 종가</strong>였다. yfinance 일봉은 장중에
+      아직 당일 봉을 확정하지 않아, 마지막으로 확정된 종가를 “현재가”로 내주고 있었다.
+      게다가 등락률은 그 전날과 비교해 계산되니 부호까지 반대로 나왔다.
+      화면에는 오류가 없었다. 그냥 하루 밀린 값이 조용히 앉아 있었다.
+    </p>
+    <div class="pair">
+      <div class="p">
+        <h4>문제</h4>
+        <p>일봉 종가를 현재가로 사용 → 장중 내내 하루 지연. 등락률 부호까지 왜곡.</p>
+      </div>
+      <div class="f">
+        <h4>조치</h4>
+        <p>실시간 체결가를 1순위로, 일봉 종가는 폴백. 전일 종가도 실시간 소스에서 가져옴.</p>
+      </div>
+    </div>
+    <p>
+      같은 날 사이드카·서킷브레이커 속보 감지도 추가했다. 공식 무료 실시간 API가 없어
+      뉴스 RSS 기반이고, 30분 내 기사만 인정하고 같은 유형은 40분 쿨다운을 둬서
+      속보 도배를 막았다. <strong>정확도의 한계를 감추지 않고 문서에 적어두는 방식</strong>을
+      이때부터 택했다.
+    </p>
+  </section>
+
+  <section class="chapter" id="c5">
+    <div class="dateline"><span class="d">2026.07.28</span><span>31일차</span></div>
+    <h2>브리핑 한 통으로는 부족했다</h2>
+    <p>
+      아침 브리핑이 08:00에 한 번 왔다. 그런데 그 시각의 데이터는 전일 종가라,
+      실제로 장이 어떻게 열렸는지는 알 수 없었다. 반대로 장중에는
+      신호가 바뀌지 않으면 아무 소식이 없어서 잘 돌고 있는지도 알기 어려웠다.
+    </p>
+    <div class="tablewrap">
+      <table>
+        <caption class="visually-hidden"></caption>
+        <thead>
+          <tr><th>시각 (KST)</th><th>내용</th><th>바뀐 이유</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="n">08:30</td><td>장 전 브리핑</td><td>전일 종가 기준, 미리 준비</td></tr>
+          <tr><td class="n">09:30</td><td>장 시작 30분</td><td>시초가 반영된 실제 흐름</td></tr>
+          <tr><td class="n">10–15시 매시</td><td>정시 점검</td><td>변화 없어도 상태 확인</td></tr>
+          <tr><td class="n">16:00</td><td>하루 정리</td><td>15:40은 마감 직후라 이르다</td></tr>
+          <tr><td class="n">23–06시 매시</td><td>정시 점검</td><td>미국장 시간대</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      08:30과 09:30 두 통은 같은 워크플로우에서 처리한다.
+      어느 크론이 실행됐는지로 종류를 갈랐고, 나중에 스케줄러를 옮길 때는
+      호출 측이 종류를 직접 넘기는 방식으로 바뀌었다.
+    </p>
+  </section>
+
+  <section class="chapter" id="c6">
+    <div class="dateline"><span class="d">2026.07.28</span><span>31일차</span></div>
+    <h2>매수자리를 의심하기 시작했다</h2>
+    <p class="lede">
+      두 번째 침묵 실패. 매수자리는 설정 당시의 가격이 그대로 저장돼 있었다.
+      시세가 움직이면 그 숫자는 의미를 잃는데, 아무도 그 사실을 알려주지 않았다.
+    </p>
+    <p>
+      브리핑에 이런 줄이 찍히고 있었다. 현재가보다 <strong>20~30% 위</strong>를
+      “매수자리”라고 부르고 있었던 것이다.
+    </p>
+    <figure class="evidence">
+      <figcaption>낡은 고정값이 만든 문장</figcaption>
+      <pre>• SK하이닉스  1,550,000원   <span class="dim">매수자리까지</span> <span class="bad">+30.3%</span>
+• 삼성전자    &nbsp;&nbsp;220,000원   <span class="dim">매수자리까지</span> <span class="bad">+22.1%</span></pre>
+    </figure>
+    <p>
+      고쳐야 할 방향은 분명했지만, 어떻게 고칠지는 분명하지 않았다.
+      그래서 먼저 해외 대시보드·트레이딩 자료를 조사했고, 잘 만든 구현들이
+      공통으로 쓰는 다섯 가지를 발견했다. 지지선 하나를 고르는 게 아니라
+      <strong>여러 근거를 겹쳐 점수를 붙인 구간</strong>을 만든다는 것.
+    </p>
+    <ul class="plain">
+      <li><strong>합류</strong> 40점 — 이평선·볼린저·일목·피보나치·스윙저점이 한 가격대에 모이는가</li>
+      <li><strong>거래량</strong> 30점 — 실제로 물량이 오간 가격대인가</li>
+      <li><strong>검증 횟수</strong> 20점 — 위에서 내려와 그 구간에 닿았고, 몇 번 튕겼나</li>
+      <li><strong>추세</strong> 10점 — 200일선 위인가. <strong>아래면 산출 자체를 거부</strong></li>
+      <li><strong>ATR</strong> — 구간 폭과 손절 위치를 변동성으로 정하고 손익비를 자동 계산</li>
+    </ul>
+
+    <h3>검증 없이는 켜지 않았다</h3>
+    <p>
+      규칙을 만든 뒤 바로 적용하지 않고 백테스트를 돌렸다. 유니버스 91종목,
+      5년치, 미래 데이터를 차단한 상태로 36,094개 표본.
+      결과는 <strong>기대보다 겸손했지만 방향은 분명했다.</strong>
+    </p>
+    <figure class="evidence">
+      <figcaption>10일 보유 기준 · 순열검정</figcaption>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr><th>조건</th><th>신호수</th><th>평균</th><th>승률</th><th>p</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>비교군 (아무 날 매수)</td><td class="n">36,094</td><td class="n">+1.03%</td><td class="n">53.1%</td><td class="n lose">—</td></tr>
+            <tr><td>구간만 (RSI 무관)</td><td class="n">1,020</td><td class="n">+1.13%</td><td class="n">54.0%</td><td class="n lose">0.365</td></tr>
+            <tr><td>RSI2만 (구간 무관)</td><td class="n">1,456</td><td class="n">+1.16%</td><td class="n">55.0%</td><td class="n lose">0.281</td></tr>
+            <tr><td><strong>추세 + 구간 + RSI2≤10</strong></td><td class="n">124</td><td class="n win">+2.75%</td><td class="n win">61.3%</td><td class="n win">0.013</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </figure>
+    <p>
+      가장 중요한 발견은 <strong>조건 하나하나는 아무 효과가 없다는 것</strong>이었다.
+      구간만 봐도, 과매도만 봐도 비교군과 다르지 않다. 셋이 겹칠 때만 차이가 났다.
+      그리고 20일 보유하면 초과수익이 사라졌다 — 단기 반등 신호일 뿐,
+      “여기 사서 묻어두라”는 신호가 아니라는 뜻이다.
+    </p>
+    <blockquote>
+      여러 조합을 본 뒤에 고른 기준이라, 다중비교를 감안하면 p=0.013은 확정적이지 않다.
+      표본도 124건으로 적다. 참고 신호이지 예측이 아니다.
+    </blockquote>
+    <p>이 문장은 코드 주석과 개발일지에 그대로 남겼다.</p>
+
+    <h3>검증이 잡아낸 버그 세 개</h3>
+    <p>
+      백테스트를 돌린 진짜 소득은 성과 수치가 아니라 버그였다.
+      첫 실행에서 <strong>신호가 0건</strong> 나왔다.
+    </p>
+    <figure class="evidence">
+      <figcaption>3,161일 시뮬레이션 · 1차 시도</figcaption>
+      <pre>총 신호 <span class="bad">0건</span> · 구간진입했으나 과매도 아님 2건
+  5일 | 신호 없음
+ 10일 | 신호 없음
+ 20일 | 신호 없음</pre>
+    </figure>
+    <p>
+      원인은 규칙이 엄격해서가 아니었다. 구간을 “현재가 아래 지지선”으로만 만들면서
+      알림 조건은 “현재가가 구간 안에 들어오면”으로 걸어놨다.
+      <strong>구간이 정의상 항상 현재가 아래이므로, 현재가가 그 안에 들어가는 일은 영원히 없다.</strong>
+      백테스트를 안 돌렸다면 “조용한 알림”으로 몇 달을 보냈을 것이다.
+    </p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>버그</th><th>증상</th><th>발견 경로</th></tr></thead>
+        <tbody>
+          <tr><td>구간·트리거 모순</td><td>구조적으로 발화 불가</td><td>백테스트 신호 0건</td></tr>
+          <tr><td>접촉 횟수 과대계수</td><td>엔비디아 27회 → 실제 8회</td><td>수치가 비현실적</td></tr>
+          <tr><td><code>trend_ok</code> 하드코딩</td><td>추세 필터 검증이 무의미</td><td>ON/OFF 결과가 동일</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      세 번째가 특히 교훈적이다. 추세 필터를 켜고 끈 결과가 <strong>완전히 똑같이</strong> 나왔다.
+      성공 경로에서 <code>trend_ok</code>를 항상 <code>True</code>로 반환하고 있었기 때문이다.
+      고친 뒤 다시 재보니 추세 필터는 10일 수익을 세 배 가르는 조건이었다
+      (+2.75% vs +0.97%). <strong>검증이 무의미하게 돌아가고 있었다는 걸 검증이 잡아냈다.</strong>
+    </p>
+  </section>
+
+  <section class="chapter" id="c7">
+    <div class="dateline"><span class="d">2026.07.28</span><span>31일차</span></div>
+    <h2>“5분마다”가 5분마다가 아니었다</h2>
+    <p class="lede">
+      세 번째이자 가장 큰 침묵 실패. 알림 워크플로우의 크론은
+      <code>*/5 * * * *</code> — 5분마다였다. 실제 실행 기록을 열어보니 전혀 달랐다.
+    </p>
+    <figure class="evidence">
+      <figcaption>alerts.yml 실행 이력 · 설정은 5분 간격</figcaption>
+      <pre>00:12  <span class="ok">success</span>
+04:04  <span class="ok">success</span>   <span class="dim">← 3시간 52분 공백</span>
+07:46  <span class="ok">success</span>   <span class="dim">← 3시간 42분</span>
+10:57  <span class="ok">success</span>   <span class="dim">← 3시간 11분</span>
+13:41  <span class="ok">success</span>   <span class="dim">← 2시간 44분</span></pre>
+    </figure>
+    <p>
+      전부 <span class="verdict v-lie">success</span>다. 실패한 기록이 하나도 없다.
+      GitHub이 스케줄 실행을 <strong>아예 시작하지 않고 조용히 버린 것</strong>이다.
+      무료 러너의 고빈도 cron은 best-effort라, 부하가 걸리면 스킵되고
+      스킵은 로그에 남지 않는다.
+    </p>
+    <p>
+      즉 “신호 바뀌면 즉시 알림”은 성립하지 않았다. 최대 4시간 늦게 왔다.
+      하루 정리는 16:00에 가야 하는데 19:32에 도착한 날도 있었다.
+    </p>
+    <p>
+      해결의 단서는 GitHub 문서가 아니라 동작 차이에 있었다.
+      <strong><code>schedule</code>은 버려지지만 <code>workflow_dispatch</code>는 API로 부르면 즉시 실행된다.</strong>
+      그렇다면 시각을 지키는 일만 밖으로 빼면 된다.
+    </p>
+    <figure class="evidence">
+      <figcaption>새 구조 — 실행은 그대로, 시각만 이전</figcaption>
+      <pre>Cloudflare Workers cron (5분마다)
+        │  지금 무엇을 돌릴 시각인지 판단
+        ▼
+GitHub API  workflow_dispatch
+        ▼
+<span class="good">기존 워크플로우 그대로 실행</span> → 텔레그램</pre>
+    </figure>
+    <p>
+      파이썬 코드는 한 줄도 바꾸지 않았다. 크론 트리거도 하나만 등록하고,
+      무엇을 돌릴지는 워커 안의 표로 판단하게 했다 — 무료 플랜의 트리거 개수 제한을
+      아예 신경 쓸 필요가 없게.
+    </p>
+    <p>
+      보안 판단도 하나 했다. 워커에 수동 실행용 주소를 열어두면 편하지만,
+      주소를 아는 사람이 알림을 마구 발생시킬 수 있다. 공개 URL을 끄고,
+      혹시 열더라도 시크릿 없이는 404가 나도록 이중으로 막았다.
+    </p>
+  </section>
+
+  <section class="chapter" id="c8">
+    <div class="dateline"><span class="d">2026.07.29</span><span>32일차</span></div>
+    <h2>같은 알림을 아내와 같이 보려면</h2>
+    <p>
+      단톡방에도 브리핑을 보내고 싶다는 요구가 생겼다. 기술적으로는 이미
+      그룹 봇이 준비돼 있었지만, 그대로 보내면 문제가 있었다.
+      알림 대부분이 <strong>개인 워치리스트와 보유종목 기반</strong>이라,
+      보유 중인 종목과 매수 관심가가 전부 드러난다.
+    </p>
+    <p>
+      그래서 목록 자체를 분리했다. 단톡방 전용 종목 파일을 따로 두고,
+      개인 목록·보유종목과 섞이지 않게 했다. 발송 대상도 코드에서 갈라
+      개인방과 그룹방이 각각 다른 봇·다른 채팅을 쓴다.
+      그룹 chat_id는 <strong>개인방으로 폴백하지 않게</strong> 했다 —
+      조용히 개인방으로 가버리면 알아채기 어렵기 때문이다.
+    </p>
+
+    <h3>이모지에도 함정이 있었다</h3>
+    <p>
+      등락 표시로 🔺 / 🔻를 쓰고 있었다. 그런데 이 둘은
+      <strong>유니코드상 둘 다 빨간색</strong>이다. 방향은 다르지만 색으로는 구분되지 않는다.
+      상승을 파란색으로 바꾸려 했지만 <strong>파란 삼각형 이모지는 존재하지 않는다.</strong>
+      원형(🔵🔴)은 본문보다 크게 렌더링돼 튀었다.
+    </p>
+    <figure class="evidence">
+      <figcaption>최종 — 파란 마름모와 빨간 삼각형</figcaption>
+      <div class="tg">
+        <div class="bubble">
+          <span class="who">JDbot · 단톡방</span>
+          이더리움&nbsp; 2,795,000원 <span class="up">🔹+1.1%</span><br>
+          애플&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; $340.08 <span class="up">🔹+0.8%</span><br>
+          SK하이닉스 1,550,000원 <span class="down">🔻−14.6%</span><br>
+          삼성전자&nbsp;&nbsp; 220,000원 <span class="down">🔻−13.4%</span>
+        </div>
+      </div>
+    </figure>
+    <p>
+      작은 이모지를 골라 크기를 맞추고 색으로 갈랐다.
+      사소해 보이지만 <strong>매일 열어보는 화면에서는 사소하지 않다.</strong>
+    </p>
+  </section>
+
+  <section class="chapter" id="c9">
+    <div class="dateline"><span class="d">2026.08.03</span><span>37일차</span></div>
+    <h2>토큰 한 글자</h2>
+    <p class="lede">
+      네 번째 침묵 실패. 워커를 배포했는데 GitHub이 깨어나지 않았다.
+      크론은 5분마다 정확히 돌고, 시각 판단도 맞고, 그런데 API 호출만 실패했다.
+    </p>
+    <p>
+      응답은 <code>400 Bad Request</code>에 <strong>본문이 비어 있었다.</strong>
+      GitHub이 보통 에러 이유를 JSON으로 알려주는데 아무것도 없었다.
+      같은 요청을 다른 인증으로 보내보니 <code>204</code>로 성공했다 —
+      요청 형식은 문제가 없다는 뜻. 남은 건 토큰이었다.
+    </p>
+    <p>진단 로그를 심어 다음 실행을 기다렸다.</p>
+    <figure class="evidence">
+      <figcaption>워커 진단 로그 · 토큰 값은 찍지 않고 길이와 접두만</figcaption>
+      <pre><span class="dim">tick 15:50:58 · 대상 1건: alerts.yml</span>
+토큰 점검: 길이=<span class="bad">1</span>  접두=<span class="bad">(없음)</span>  공백포함=false
+GET /repos 응답: <span class="bad">400</span>
+<span class="bad">❌ dispatch 실패: 400 Bad Request · body=(빈 응답)</span></pre>
+    </figure>
+    <p>
+      <strong>토큰이 1글자로 저장돼 있었다.</strong> 며칠 전 시크릿을 입력할 때
+      터미널 프롬프트에서 붙여넣기가 먹지 않은 채 엔터가 들어간 것이다.
+      당시 출력에 증거가 있었는데 아무도 눈치채지 못했다 — 마스킹 별표가 딱 한 개였다.
+    </p>
+    <figure class="evidence">
+      <figcaption>며칠 전 입력 화면 · 별표 한 개</figcaption>
+      <pre>$ wrangler secret put GH_TOKEN
+√ Enter a secret value: ... <span class="bad">*</span>
+✨ Success! Uploaded secret GH_TOKEN</pre>
+    </figure>
+    <p>
+      <span class="verdict v-lie">Success!</span> 라고 찍혀 있다.
+      1글자짜리 Bearer 토큰은 GitHub이 형식 단계에서 거부하기 때문에
+      에러 본문조차 돌려주지 않았고, 그래서 원인이 보이지 않았던 것이다.
+    </p>
+    <p>
+      해결은 대시보드에서 값을 다시 넣는 것이었다 — <strong>입력값이 화면에 보이는 경로로.</strong>
+      그리고 붙여넣기에 줄바꿈이 섞이는 경우를 대비해 코드에서 <code>trim()</code>도 넣었다.
+    </p>
+    <figure class="evidence">
+      <figcaption>같은 로그, 토큰 교체 후</figcaption>
+      <pre><span class="dim">tick 14:00:59 · 대상 2건: alerts.yml, hourly.yml</span>
+토큰 점검: 길이=<span class="good">93</span>  접두=<span class="good">github_pat_</span>  공백포함=false
+GET /repos 응답: <span class="good">200</span> {"full_name":"kimdike/jusik" ...}
+<span class="good">✅ 정시 점검 (hourly.yml) 실행 요청</span>
+<span class="good">✅ 신호·목표가 점검 (alerts.yml) 실행 요청</span></pre>
+    </figure>
+    <p>
+      확인된 뒤 GitHub의 <code>schedule</code>을 7개 워크플로우 전부에서 제거했다.
+      지우기 전에 한 가지를 먼저 처리해야 했다 — <strong>종목 발굴 워크플로우가
+      워커 표에 빠져 있었다.</strong> 그대로 지웠다면 발굴이 영구히 멈췄을 것이다.
+      워커를 먼저 배포하고 나서 크론을 지워 공백 구간이 생기지 않게 했다.
+    </p>
+  </section>
+
+  <section class="chapter" id="c10">
+    <div class="dateline"><span class="d">2026.08.03</span><span>같은 날, 몇 시간 뒤</span></div>
+    <h2>다섯 번째는 이 기록을 쓰는 중에 나왔다</h2>
+    <p class="lede">
+      단톡방 브리핑이 자동으로 가고 있는지 확인해달라는 요청에서 시작됐다.
+      확인해보니 <strong>애초에 스케줄에 연결돼 있지 않았다.</strong>
+      기능만 만들고 워크플로우를 만들지 않아, 그동안 단톡방에 자동으로 간 것은
+      사이드카·서킷브레이커 하나뿐이었다.
+    </p>
+    <p>
+      워크플로우를 만들어 실행했고 <span class="verdict v-lie">success</span>가 떴다.
+      그런데 발송 로그를 자세히 보니 이상했다. 종목별로 “차트 + 뉴스 별도”라고
+      찍히는데, <strong>그 문장은 전송 성공 여부와 무관하게 출력되고 있었다.</strong>
+      <code>send_photo()</code>의 반환값을 받지 않고 버리는 코드였다.
+    </p>
+    <p>
+      이 저장소에서 네 번이나 같은 방식으로 속았으니 이번엔 먼저 로그를 고쳤다.
+      종목별로 실제 성공/실패와 사유를 남기게 하고 다시 돌렸다.
+    </p>
+    <figure class="evidence">
+      <figcaption>로그를 고친 직후 첫 실행 · 16종목 중 5종목 누락</figcaption>
+      <pre>삼성전자:       차트 + 뉴스 별도 <span class="good">✅</span> / 뉴스 <span class="good">✅</span>
+SK하이닉스:     차트+뉴스 인라인 <span class="good">✅</span>
+<span class="dim">…</span>
+메타:           차트 <span class="good">✅</span> / 뉴스 <span class="bad">❌ 429 Too Many Requests</span>
+엔비디아:       차트 <span class="bad">❌ 429 retry_after 26</span>
+마이크로소프트: 차트 <span class="bad">❌ 429 retry_after 22</span>
+S&amp;P500(SPY):    차트 <span class="bad">❌ 429 retry_after 19</span>
+비트코인:       차트 <span class="bad">❌ 429 retry_after 16</span>
+이더리움:       차트 <span class="bad">❌ 429 retry_after 14</span></pre>
+    </figure>
+    <p>
+      텔레그램 그룹 채팅은 <strong>분당 약 20통</strong> 제한이 있다.
+      16종목 × 최대 2통을 간격 없이 쏘니 뒤쪽 3분의 1이 거부되고 있었다.
+      워크플로우는 여전히 <span class="verdict v-lie">success</span>였다 —
+      예외가 발생하지 않았으니까.
+    </p>
+    <div class="pair">
+      <div class="p">
+        <h4>문제</h4>
+        <p>연속 발송으로 한도 초과. 뒤쪽 종목이 조용히 누락. 로그는 전부 성공으로 표시.</p>
+      </div>
+      <div class="f">
+        <h4>조치</h4>
+        <p><code>retry_after</code>만큼 기다렸다 재시도 + 종목 간 4초 간격으로 애초에 한도를 넘지 않게.</p>
+      </div>
+    </div>
+    <blockquote>
+      로그를 고치지 않았다면 이 누락은 계속 “발송 완료”로 남았을 것이다.
+      침묵 실패를 찾는 도구를 만들자마자, 그 도구가 새 침묵 실패를 하나 더 찾아냈다.
+    </blockquote>
+  </section>
+
+  <section class="chapter" id="c11">
+    <div class="dateline"><span class="d">2026.08.03</span><span>같은 날, 밤</span></div>
+    <h2>브리핑 한 통에서 하루 흐름으로</h2>
+    <p class="lede">
+      단톡방에 아침 08:40 한 통만 가는 게 아쉬웠다.
+      “장중에 뭔가 팍 오르거나 팍 내리면 그 종목만 딱 알림이 오게 할 수 없나.”
+    </p>
+    <p>
+      요구는 간단해 보였지만 설계에서 걸리는 게 있었다.
+      <strong>“팍”의 기준이 종목마다 다르다.</strong>
+      삼성전자 3%는 큰 사건이지만 도지코인 3%는 평범하다.
+      고정 퍼센트로 잡으면 변동성 큰 종목 알림만 쏟아진다.
+    </p>
+
+    <h3>첫 시도는 틀렸다</h3>
+    <p>
+      종목별 평균 변동폭(ATR)에 비례한 기준을 썼다. 논리는 맞아 보였는데
+      실제로 돌려보니 <strong>그날 삼성전자가 −8.8%였는데도 알림이 걸리지 않았다.</strong>
+      기준이 16.3%로 계산됐기 때문이다.
+    </p>
+    <p>
+      원인은 이 환경의 시세 변동성이었다. 삼성전자 일간 변동률 중간값이 4.6%인 장에서
+      ATR × 1.5는 지나치게 관대한 기준이 된다. 분포를 직접 뽑아 확인했다.
+    </p>
+    <figure class="evidence">
+      <figcaption>단톡방 종목 일간 변동률 분포 · 최근 60일</figcaption>
+      <div class="tablewrap">
+        <table>
+          <thead>
+            <tr><th>종목</th><th>중간값</th><th>90분위</th><th>ATR×1.5</th><th>당일</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>삼성전자</td><td class="n">4.6%</td><td class="n">9.9%</td><td class="n lose">16.3%</td><td class="n">−8.8%</td></tr>
+            <tr><td>SK하이닉스</td><td class="n">5.5%</td><td class="n">11.6%</td><td class="n lose">20.7%</td><td class="n">−8.8%</td></tr>
+            <tr><td>메타</td><td class="n">1.6%</td><td class="n">5.1%</td><td class="n">6.5%</td><td class="n">+5.7%</td></tr>
+            <tr><td>S&amp;P500(SPY)</td><td class="n">0.5%</td><td class="n">1.5%</td><td class="n">1.7%</td><td class="n">+1.4%</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </figure>
+    <p>
+      <strong>90분위</strong>로 바꿨다. “이 종목 기준으로 열흘에 한 번쯤 있는 움직임”이라는
+      뜻이 되어 해석도 명확하다. 여기에 하한 2%(조용한 종목의 노이즈 차단)와
+      상한 8%(변동성 극단적인 종목도 알림은 오게)를 뒀다. 그리고 사용자가
+      원하는 감도가 있으면 종목별로 직접 지정할 수 있게 종목 목록에 필드를 뒀다 —
+      삼성전자·SK하이닉스는 5%로 고정했다.
+    </p>
+    <p>
+      도배 방지는 <strong>단계</strong>로 풀었다. 그날 도달한 최고 단계를 기록해두고,
+      −5%에 머무는 동안은 침묵한다. −10%로 더 빠지면 2단계로 다시 알린다.
+      여러 종목이 동시에 걸리면 6개씩 보내고 1분 쉬었다가 이어 보낸다 —
+      많이 걸려도 버리지 않는다.
+    </p>
+
+    <h3>여덟 번째도 같은 얼굴이었다</h3>
+    <p>
+      만들어서 실행했더니 <span class="verdict v-lie">success</span>,
+      그리고 <strong>“급변동 없음”</strong>이었다. 로컬에서는 4종목이 걸렸는데.
+    </p>
+    <p>
+      원인은 시세가 아니라 <code>.gitignore</code>였다. 급변동 상태 파일을
+      제외 목록에 넣지 않아서, 로컬 테스트로 생성된 상태 파일이 커밋에 딸려 들어갔다.
+      실행 환경이 그 파일을 “오늘 이미 알림 보냄” 상태로 읽은 것이다.
+    </p>
+    <blockquote>
+      알림이 안 오는 게 정답인지 고장인지 구분되지 않는 상태.
+      이 프로젝트에서 여덟 번째로 만난 같은 얼굴이었다.
+    </blockquote>
+    <p>
+      추적을 해제하고 제외 목록에 넣은 뒤 다시 돌렸다.
+    </p>
+    <figure class="evidence">
+      <figcaption>수정 후 · 종목별 기준과 실제 도달</figcaption>
+      <pre>- SK하이닉스:     <span class="bad">-8.8%</span> (기준 5.0%) <span class="good">✅</span>
+- 삼성전자:       <span class="bad">-8.8%</span> (기준 5.0%) <span class="good">✅</span>
+- 메타:           <span class="good">+5.7%</span> (기준 5.1%) <span class="good">✅</span>
+- 마이크로소프트: <span class="good">+5.3%</span> (기준 3.5%) <span class="good">✅</span></pre>
+    </figure>
+  </section>
+
+  <section class="closing" id="now">
+    <h2>현재 구조</h2>
+    <p>
+      Cloudflare Workers가 5분마다 깨어나 시각을 판단하고, GitHub Actions가 실행하고,
+      텔레그램 봇 두 개가 개인방과 단톡방에 나눠 보낸다.
+      파이썬 코드는 스케줄러 이전 전후로 바뀌지 않았다.
+    </p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>시각 (KST)</th><th>워크플로우</th><th>대상</th></tr></thead>
+        <tbody>
+          <tr><td class="n">10분마다</td><td>신호·목표가·매수구간 점검</td><td>개인방</td></tr>
+          <tr><td class="n">장중 10분마다</td><td>급변동 감지 (걸린 종목만)</td><td>단톡방</td></tr>
+          <tr><td class="n">평일 09–15시, 5분</td><td>사이드카·서킷브레이커</td><td>단톡방</td></tr>
+          <tr><td class="n">08:30 / 09:30</td><td>장 전 / 장 시작 브리핑</td><td>개인방</td></tr>
+          <tr><td class="n">08:40</td><td>단톡방 브리핑 (16종목 차트)</td><td>단톡방</td></tr>
+          <tr><td class="n">09:35</td><td>단톡방 시황 요약 (텍스트)</td><td>단톡방</td></tr>
+          <tr><td class="n">10–15시, 23–06시 매시</td><td>정시 점검</td><td>개인방</td></tr>
+          <tr><td class="n">16:00</td><td>하루 정리</td><td>개인방 + 단톡방</td></tr>
+          <tr><td class="n">06:00</td><td>종목 발굴 스캔</td><td>저장소 커밋</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3>이 프로젝트가 가르쳐준 것</h3>
+    <div class="lessons">
+      <div class="lesson">
+        <span class="mark">一</span>
+        <p><b>성공 표시는 동작의 증거가 아니다</b>
+        크론은 전부 success였고 실행되지 않았다. 시크릿은 Success!였고 1글자였다.
+        워크플로우는 success였고 텔레그램 전송은 실패할 수 있었다.
+        <strong>결과를 확인하려면 결과를 봐야 한다.</strong></p>
+      </div>
+      <div class="lesson">
+        <span class="mark">二</span>
+        <p><b>발화하지 않는 알림은 조용하다</b>
+        구간과 트리거가 모순돼 영원히 울릴 수 없는 알림을, 백테스트를 돌리기 전까지
+        아무도 몰랐다. 알림 시스템의 가장 위험한 상태는 오작동이 아니라 침묵이다.</p>
+      </div>
+      <div class="lesson">
+        <span class="mark">三</span>
+        <p><b>검증도 고장 난다</b>
+        추세 필터를 켜고 끈 결과가 똑같이 나왔던 건 필터가 무의미해서가 아니라
+        검증 코드가 항상 참을 반환했기 때문이다. 검증 결과가 너무 깔끔하면 의심할 일이다.</p>
+      </div>
+      <div class="lesson">
+        <span class="mark">四</span>
+        <p><b>모르겠으면 모르겠다고 내놓는다</b>
+        매수 관심구간은 근거가 부족하면 점수와 사유를 밝히며 거부한다.
+        하락추세면 아예 산출하지 않는다. 억지로 숫자를 만들어내는 쪽이
+        아무 말도 안 하는 쪽보다 위험하다.</p>
+      </div>
+    </div>
+
+    <h3>남은 것</h3>
+    <ul class="plain">
+      <li>스케줄러가 단일 장애점이 됐다. 토큰이 만료되면 알림이 조용히 멈춘다 — 이번 사건과 같은 방식으로</li>
+      <li>매수구간 검증 표본이 124건. 다중비교 보정을 견딜 만큼 쌓이지 않았다</li>
+      <li>사이드카·서킷브레이커는 뉴스 기반이라 몇 분 지연이 있다</li>
+      <li>급변동 감지는 장중 시간대만 — 코인은 주말·새벽 움직임을 놓친다</li>
+      <li>뉴스 감성 분석은 제목 키워드 수준</li>
+    </ul>
+  </section>
+
+  <footer>
+    <span>개인용 투자 보조 도구 · 예측기 아님 · 매수·매도 권유 아님</span>
+    <span>2026.06.28 — 08.03</span>
+  </footer>
+
+</div>
+
+</body>
+</html>
