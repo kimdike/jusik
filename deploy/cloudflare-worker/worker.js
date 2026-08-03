@@ -75,6 +75,21 @@ const SCHEDULE = [
     hours: [23], // KST 08:40 — 개인 장전브리핑(08:30) 직후
     dow: [0, 1, 2, 3, 4], // UTC 일~목 = KST 월~금
   },
+  {
+    file: "group_summary.yml",
+    label: "단톡방 시황 요약",
+    minute: 35,
+    hours: [0], // KST 09:35 — 시초가 반영, 텍스트 한 통
+    dow: [1, 2, 3, 4, 5],
+  },
+  {
+    file: "spike.yml",
+    label: "급변동 감지",
+    every: 10,
+    // KST 09~16시(한국장) + KST 22~06시(미국장). 코인은 이 시간대에만 감시된다.
+    hours: [0, 1, 2, 3, 4, 5, 6, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+    dow: [1, 2, 3, 4, 5],
+  },
 ];
 
 function isDue(job, now) {

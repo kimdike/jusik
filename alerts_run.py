@@ -46,6 +46,12 @@ def main() -> None:
                     help="브리핑 발송: pre(장 전 08:30) / open(장 시작 30분) / hourly(정시 점검)")
     ap.add_argument("--group-brief", action="store_true",
                     help="단톡방 종목 브리핑 발송 (차트+가격요약+매수구간+뉴스)")
+    ap.add_argument("--group-summary", action="store_true",
+                    help="단톡방 종목 텍스트 요약 1통 (차트 없음)")
+    ap.add_argument("--spike", action="store_true",
+                    help="단톡방 종목 급등/급락 감지 후 해당 종목만 알림")
+    ap.add_argument("--wrap-group", action="store_true",
+                    help="--wrap 을 개인방+단톡방 양쪽에 발송")
     ap.add_argument("--add", metavar="NAME", help="워치리스트에 종목 추가 (이름/티커로 검색)")
     ap.add_argument("--market", metavar="KR|US|COIN", help="--add 시 시장 지정")
     ap.add_argument("--remove", metavar="NAME", help="워치리스트에서 종목 제거")
@@ -93,6 +99,19 @@ def main() -> None:
             print("  -", line)
         return
 
+    if args.group_summary:
+        text = alerts.build_group_summary(send_telegram=True, kind="open")
+        print(f"[{_ts()}] 단톡방 요약:")
+        print(text)
+        return
+
+    if args.spike:
+        log = alerts.check_spikes(send_telegram=True)
+        print(f"[{_ts()}] 급변동 점검:")
+        for line in log:
+            print("  -", line)
+        return
+
     if args.brief:
         text = alerts.build_briefing(send_telegram=True, kind=args.brief)
         print(f"[{_ts()}] 브리핑({args.brief}) 발송:")
@@ -100,7 +119,8 @@ def main() -> None:
         return
 
     if args.wrap:
-        text = alerts.build_market_wrap(send_telegram=True)
+        tg = ["personal", "group"] if args.wrap_group else ["personal"]
+        text = alerts.build_market_wrap(send_telegram=True, targets=tg)
         print(f"[{_ts()}] 하루 정리 발송:")
         print(text)
         return

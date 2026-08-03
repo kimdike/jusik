@@ -24,8 +24,11 @@ jobs:
           cache-dependency-path: requirements-alerts.txt
       - name: 의존성 설치 (경량)
         run: pip install -r requirements-alerts.txt
-      - name: 하루 정리 발송
+      # 지수·대형주 요약이라 개인 정보가 없어 단톡방에도 같이 보낸다
+      - name: 하루 정리 발송 (개인방 + 단톡방)
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python alerts_run.py --wrap
+          TELEGRAM_GROUP_BOT_TOKEN: ${{ secrets.TELEGRAM_GROUP_BOT_TOKEN }}
+          TELEGRAM_GROUP_CHAT_ID: ${{ secrets.TELEGRAM_GROUP_CHAT_ID }}
+        run: python alerts_run.py --wrap --wrap-group

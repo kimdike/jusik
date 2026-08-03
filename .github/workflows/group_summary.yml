@@ -1,0 +1,35 @@
+name: 단톡방 시황 요약
+
+# 장 시작 30분 후, 단톡방 종목 전체를 '텍스트 한 통'으로 보낸다.
+# 08:40 차트 브리핑과 같은 날 또 16종목 차트를 보내면 50통이 되므로
+# 시초가 반영된 흐름만 가볍게 확인하는 용도.
+#
+# 스케줄은 Cloudflare Workers(deploy/cloudflare-worker)가 담당한다.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  summary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-alerts.txt
+
+      - name: 의존성 설치 (경량)
+        run: pip install -r requirements-alerts.txt
+
+      - name: 단톡방 요약 발송
+        env:
+          TELEGRAM_GROUP_BOT_TOKEN: ${{ secrets.TELEGRAM_GROUP_BOT_TOKEN }}
+          TELEGRAM_GROUP_CHAT_ID: ${{ secrets.TELEGRAM_GROUP_CHAT_ID }}
+        run: python alerts_run.py --group-summary

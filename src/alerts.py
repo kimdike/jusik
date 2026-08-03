@@ -24,6 +24,7 @@ GROUP_WATCHLIST_FILE = _DATA / "watchlist_group.json"   # 단톡방 전용 종�
 PORTFOLIO_FILE = _DATA / "portfolio.json"
 ALERTS_FILE = _DATA / "alerts.json"          # 사용자 설정 (목표가/손절가/신호알림)
 STATE_FILE = _DATA / "alert_state.json"      # 런타임 상태 (gitignore)
+SPIKE_STATE_FILE = _DATA / "spike_state.json"  # 급변동 알림 중복 방지 상태 (gitignore)
 HALT_STATE_FILE = _DATA / "halt_state.json"  # 사이드카/CB 중복 알림 방지 상태 (gitignore)
 
 
@@ -575,6 +576,47 @@ def build_group_briefing(send_telegram: bool = True, news_n: int = 3,
                                 target="group", title=title)
 
 
+def build_group_summary(send_telegram: bool = True, kind: str = "open",
+                        target: str = "group") -> str:
+    """단톡방 종목을 '텍스트 한 통'으로 요약. 차트 없음.
+
+    08:40 차트 브리핑과 같은 날 또 16종목 차트를 보내면 50통이 되므로,
+    장 시작 직후 확인용으로는 가벼운 한 통만 보낸다.
+    """
+    title = {"open": "🔔 장 시작 30분", "close": "🔔 장 마감"}.get(kind, "🔔 시황")
+    tok, cid = notify.creds(target)
+    if send_telegram and not (tok and cid):
+        return f"발송 대상 '{target}' 미설정 — 중단"
+
+    rows = []
+    for sym, mkt, name in group_symbols():
+        df = prices.get_ohlcv(sym, mkt, "1y")
+        if df is None or df.empty:
+            continue
+        lq = prices.get_live_quote(sym, mkt)
+        cur = lq.get("price") or float(df["close"].iloc[-1])
+        prev = lq.get("prev_close") or (float(df["close"].iloc[-2]) if len(df) >= 2 else cur)
+        chg = (cur - prev) / prev * 100 if prev else 0.0
+        up = signals.evaluate(df).get("up_pct")
+        rows.append((chg, name, mkt, cur, up))
+
+    rows.sort(key=lambda r: r[0], reverse=True)     # 오른 것 먼저
+    kst = _kst_now()
+    lines = [f"{title}  ({kst:%m월 %d일 %H:%M} KST)", ""]
+    for chg, name, mkt, cur, up in rows:
+        _, band = band_of(up)
+        up_s = f"{up:.0f}({band})" if up is not None else "-"
+        lines.append(f"• {name}  {_fmt_price(cur, mkt)} {_arrow(chg)}{chg:+.1f}%  · 신호 {up_s}")
+    lines += ["", "※ 보조 지표 요약 · 투자 판단은 본인 책임"]
+
+    text = "\n".join(lines)
+    if send_telegram:
+        ok, info = notify.send(text, chat_id=cid, token=tok)
+        if not ok:
+            return f"발송 실패: {info}\n\n{text}"
+    return text
+
+
 def add_group_watch(query: str, market: str | None = None, name: str | None = None) -> dict:
     """단톡방 종목 목록에 추가 (개인 워치리스트와 별개)."""
     from . import search as search_mod
@@ -594,6 +636,165 @@ def add_group_watch(query: str, market: str | None = None, name: str | None = No
     _save(GROUP_WATCHLIST_FILE, wl)
     return {"ok": True, "msg": f"단톡방 목록 추가: {item['name']} ({item['symbol']}/{item['market']})",
             "candidates": cands}
+
+
+# --- 급변동 감지 파라미터 ---
+SPIKE_PCTL = 90               # 최근 SPIKE_WINDOW 일 변동률의 이 분위를 기준으로
+SPIKE_WINDOW = 60             # 분포 산출 기간(거래일)
+SPIKE_FLOOR = {"FX": 1.0}     # 시장별 최소 기준(%) — 지정 없으면 아래 기본값
+SPIKE_FLOOR_DEFAULT = 2.0     # 이보다 작은 움직임은 노이즈로 보고 알리지 않음
+SPIKE_CAP = 8.0               # 상한(%) — 변동성 큰 종목도 이 이상이면 무조건 알림
+SPIKE_BATCH = 6               # 한 묶음에 몇 종목까지
+SPIKE_BATCH_PAUSE = 60        # 묶음 사이 대기(초) — 급하게 밀어넣지 않는다
+
+
+def _spike_threshold(df, mkt: str) -> float:
+    """종목별 '급변동' 기준(%) = 최근 60일 일간 변동률의 90분위.
+
+    "이 종목 기준으로 10일에 한 번쯤 있는 움직임"이라는 뜻이다.
+    삼성전자 3%와 도지코인 3%는 다른 사건이므로 고정값을 쓰지 않는다.
+    ATR 비례도 시도했지만 변동성이 큰 장에서는 기준이 과하게 커져
+    정작 큰 하락을 놓쳤다(삼성전자 -8.8% 미발화). 그래서 분포 기준으로 바꿨다.
+
+    하한: 조용한 종목(지수 ETF 등)에서 노이즈로 울리지 않게
+    상한: 변동성이 극단적인 종목도 알림이 아예 안 오지는 않게
+    """
+    import numpy as np
+    floor = SPIKE_FLOOR.get(mkt.upper(), SPIKE_FLOOR_DEFAULT)
+    try:
+        d = (df["close"].astype(float).pct_change().dropna().abs() * 100)
+        d = d.tail(SPIKE_WINDOW).to_numpy()
+        if d.size >= 20:
+            return float(min(SPIKE_CAP, max(floor, np.percentile(d, SPIKE_PCTL))))
+    except Exception:
+        pass
+    return floor
+
+
+def check_spikes(send_telegram: bool = True, target: str = "group",
+                 news_n: int = 2) -> list[str]:
+    """단톡방 종목 중 전일 대비 급등/급락한 종목만 골라 즉시 알림.
+
+    기준은 종목별 ATR 비례(_spike_threshold).
+    도배 방지: 그날 도달한 '최고 단계'를 기록해두고, 더 벌어질 때만 다시 알린다
+    (-5% 에 머무는 동안은 침묵, -10% 로 더 빠지면 다시 알림).
+    반환: 처리 로그.
+    """
+    import html as _html
+    import os as _os
+    import tempfile
+    from datetime import datetime, timedelta, timezone
+
+    from . import chartimg
+
+    tok, cid = notify.creds(target)
+    if send_telegram and not (tok and cid):
+        return [f"발송 대상 '{target}' 토큰/chat_id 미설정 — 중단"]
+
+    kst = datetime.now(timezone(timedelta(hours=9)))
+    today = kst.strftime("%Y-%m-%d")
+    state = _load(SPIKE_STATE_FILE, {})
+    if state.get("date") != today:
+        state = {"date": today, "sym": {}}       # 날짜가 바뀌면 초기화
+    marks: dict = state.setdefault("sym", {})
+
+    alerts_cfg = _load(ALERTS_FILE, {})
+    log: list[str] = []
+    hits = []
+
+    for sym, mkt, name in group_symbols():
+        df = prices.get_ohlcv(sym, mkt, "1y")
+        if df is None or df.empty:
+            continue
+        lq = prices.get_live_quote(sym, mkt)
+        cur = lq.get("price") or float(df["close"].iloc[-1])
+        prev = lq.get("prev_close") or (float(df["close"].iloc[-2]) if len(df) >= 2 else cur)
+        if not prev:
+            continue
+        chg = (cur - prev) / prev * 100
+        th = _spike_threshold(df, mkt)
+        key = _key(sym, mkt)
+        rec = marks.get(key) or {"up": 0, "dn": 0}
+
+        # 단계 = 기준의 몇 배인지 (1단계 = 기준 도달, 2단계 = 기준의 2배)
+        if chg > 0:
+            lvl, side, prev_lvl = int(chg / th), "up", rec.get("up", 0)
+        else:
+            lvl, side, prev_lvl = int(-chg / th), "dn", rec.get("dn", 0)
+
+        if lvl >= 1 and lvl > prev_lvl:          # 새로 더 벌어진 경우만
+            rec[side] = lvl
+            marks[key] = rec
+            hits.append({"sym": sym, "mkt": mkt, "name": name, "cur": cur,
+                         "chg": chg, "th": th, "lvl": lvl, "df": df})
+        else:
+            marks[key] = rec
+
+    _save(SPIKE_STATE_FILE, state)
+
+    if not hits:
+        return ["급변동 없음"]
+
+    # 큰 순으로 정렬해 중요한 것부터. 많이 걸려도 버리지 않고
+    # SPIKE_BATCH 개씩 보낸 뒤 잠시 쉬었다가 이어서 보낸다.
+    hits.sort(key=lambda h: abs(h["chg"]), reverse=True)
+
+    import time as _time
+    for i, h in enumerate(hits):
+        if send_telegram and i and i % SPIKE_BATCH == 0:
+            log.append(f"— {SPIKE_BATCH}종목 발송, {SPIKE_BATCH_PAUSE}초 대기 —")
+            _time.sleep(SPIKE_BATCH_PAUSE)
+        name, sym, mkt = h["name"], h["sym"], h["mkt"]
+        cfg = alerts_cfg.get(_key(sym, mkt), {})
+        up = signals.evaluate(h["df"]).get("up_pct")
+        _, band = band_of(up)
+        head = "⚡ 급등" if h["chg"] > 0 else "⚠️ 급락"
+        step = f" · {h['lvl']}단계" if h["lvl"] > 1 else ""
+        lines = [
+            f"{head} {_arrow(h['chg'])}{h['chg']:+.1f}%{step}",
+            f"{_html.escape(name)} ({sym})  {_fmt_price(h['cur'], mkt)}",
+            f"기준 {h['th']:.1f}% · 신호 {up:.0f}({band})" if up is not None
+            else f"기준 {h['th']:.1f}%",
+            _DIV, "💰 가격 요약",
+            *_price_rows(mkt, h["df"], cfg, cur=h["cur"]),
+        ]
+        news = _news_multi(name, mkt, limit=news_n)   # 급변동엔 이유가 있다
+        cap = "\n".join(lines + ([_DIV] + news if news else []))
+
+        if not send_telegram:
+            log.append(f"{name}: (미발송) {h['chg']:+.1f}% / 기준 {h['th']:.1f}%")
+            continue
+        if i % SPIKE_BATCH:
+            _time.sleep(4.0)                     # 텔레그램 분당 한도 회피
+
+        path = None
+        try:
+            fd, path = tempfile.mkstemp(suffix=".png", prefix="spike_")
+            _os.close(fd)
+            out = chartimg.render_chart(sym, mkt, name, path,
+                                        target=cfg.get("target"), entry=cfg.get("entry"),
+                                        df=h["df"])
+            if out and len(cap) <= 1024:
+                ok, info = notify.send_photo(out, caption=cap, parse_mode="HTML",
+                                             chat_id=cid, token=tok)
+            elif out:
+                ok, info = notify.send_photo(out, caption="\n".join(lines),
+                                             parse_mode="HTML", chat_id=cid, token=tok)
+                if news and ok:
+                    notify.send("\n".join(news), parse_mode="HTML",
+                                chat_id=cid, token=tok)
+            else:
+                ok, info = notify.send(cap, parse_mode="HTML", chat_id=cid, token=tok)
+            log.append(f"{name}: {h['chg']:+.1f}% (기준 {h['th']:.1f}%) "
+                       + ("✅" if ok else f"❌ {info}"))
+        finally:
+            if path and _os.path.exists(path):
+                try:
+                    _os.remove(path)
+                except Exception:
+                    pass
+
+    return log
 
 
 def check_market_halt(send_telegram: bool = True,
@@ -660,9 +861,14 @@ def band_of_label(band_key: str) -> tuple[str, str]:
     return band_key, labels.get(band_key, band_key)
 
 
-def build_market_wrap(send_telegram: bool = True) -> str:
+def build_market_wrap(send_telegram: bool = True,
+                      targets: list[str] | None = None) -> str:
     """장 마감 후 '오늘의 증시' 하루 정리 — 지수·환율 → 대형주 등락 → 관전 포인트.
-    (외국인/기관/개인 수급은 무료 데이터로 불가해 제외)"""
+    (외국인/기관/개인 수급은 무료 데이터로 불가해 제외)
+
+    targets: 발송 대상 목록. 예 ["personal", "group"] — 지수·대형주 요약이라
+    개인 정보가 없어 단톡방에 같이 보내도 무해하다.
+    """
     from datetime import datetime, timedelta, timezone
 
     from . import market as mkt_mod
@@ -727,5 +933,9 @@ def build_market_wrap(send_telegram: bool = True) -> str:
 
     text = "\n".join(L)
     if send_telegram:
-        notify.send(text)
+        for t in (targets or ["personal"]):
+            tok, cid = notify.creds(t)
+            if not (tok and cid):
+                continue                        # 미설정 대상은 건너뜀
+            notify.send(text, chat_id=cid, token=tok)
     return text
