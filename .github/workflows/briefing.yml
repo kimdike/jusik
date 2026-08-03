@@ -5,9 +5,9 @@ name: 아침 브리핑
 #   09:30 KST — 장 시작 30분 후 시황 (시초가 반영, 움직임 큰 순)
 
 on:
-  schedule:
-    - cron: "30 23 * * 0-4"   # UTC 23:30 = KST 08:30 (월~금 아침; UTC 일~목)
-    - cron: "30 0 * * 1-5"    # UTC 00:30 = KST 09:30 (장 시작 30분 후)
+  # 스케줄은 Cloudflare Workers(deploy/cloudflare-worker)가 담당한다.
+  # GitHub 의 schedule: 은 무료 러너에서 조용히 누락되므로(실측 1~4시간 지연) 제거함.
+  # 워커가 GitHub API 로 workflow_dispatch 를 호출한다.
   workflow_dispatch:
     inputs:
       kind:

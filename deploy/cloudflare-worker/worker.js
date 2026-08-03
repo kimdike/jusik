@@ -61,6 +61,13 @@ const SCHEDULE = [
     hours: [7], // KST 16:00
     dow: [1, 2, 3, 4, 5],
   },
+  {
+    file: "discovery.yml",
+    label: "종목 발굴 스캔",
+    minute: 0,
+    hours: [21], // KST 06:00 (미국장 마감 후, 아침 브리핑 전)
+    // 매일 — 주말도 돌려 유니버스 결과를 최신으로 유지
+  },
 ];
 
 function isDue(job, now) {

@@ -6,8 +6,9 @@ name: 정시 점검 (1시간마다)
 # (신호 변경 즉시 알림은 alerts.yml 이 그대로 담당 — 이건 정기 스냅샷)
 
 on:
-  schedule:
-    - cron: "0 1-6,14-21 * * 1-5"   # UTC 01~06 = KST 10~15 / UTC 14~21 = KST 23~06
+  # 스케줄은 Cloudflare Workers(deploy/cloudflare-worker)가 담당한다.
+  # GitHub 의 schedule: 은 무료 러너에서 조용히 누락되므로(실측 1~4시간 지연) 제거함.
+  # 워커가 GitHub API 로 workflow_dispatch 를 호출한다.
   workflow_dispatch:
 
 permissions:

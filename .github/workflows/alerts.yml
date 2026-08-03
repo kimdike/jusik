@@ -4,8 +4,9 @@ name: 주식 자동 알림
 # 토큰은 저장소 Secrets(TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID)에서 읽으며 코드/로그에 노출되지 않습니다.
 
 on:
-  schedule:
-    - cron: "*/5 * * * *"       # 5분마다 (UTC 기준 — 한국장·미국장·코인 24시간 커버)
+  # 스케줄은 Cloudflare Workers(deploy/cloudflare-worker)가 담당한다.
+  # GitHub 의 schedule: 은 무료 러너에서 조용히 누락돼(실측 1~4시간 지연) 제거함.
+  # 워커가 GitHub API 로 workflow_dispatch 를 호출한다.
   workflow_dispatch:            # 수동 실행 버튼 (테스트용)
     inputs:
       test:

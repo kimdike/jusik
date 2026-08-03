@@ -6,9 +6,9 @@ name: 사이드카·서킷브레이커 감지
 # 토큰/chat_id는 저장소 Secrets에서 읽습니다.
 
 on:
-  schedule:
-    # UTC 00:00~06:55 = KST 09:00~15:55, 월~금 (한국장 정규장)
-    - cron: "*/5 0-6 * * 1-5"
+  # 스케줄은 Cloudflare Workers(deploy/cloudflare-worker)가 담당한다.
+  # GitHub 의 schedule: 은 무료 러너에서 조용히 누락되므로(실측 1~4시간 지연) 제거함.
+  # 워커가 GitHub API 로 workflow_dispatch 를 호출한다.
   workflow_dispatch:            # 수동 실행 버튼
     inputs:
       test:
